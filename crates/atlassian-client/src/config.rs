@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::error::{Error, Result};
 use crate::oauth::{OAuthConfig, OAuthSession, DEFAULT_TOKEN_URL};
@@ -39,6 +40,9 @@ pub struct Config {
     pub read_only: bool,
     /// Path of the JSONL audit log for write operations. `None` disables it.
     pub audit_log: Option<PathBuf>,
+    /// How long reference data (projects, issue types, boards, spaces, field
+    /// definitions) may be reused. `None` disables caching entirely (D25).
+    pub cache_ttl: Option<Duration>,
 }
 
 impl Config {
@@ -89,14 +93,32 @@ impl Config {
             .filter(|raw| !raw.is_empty())
             .map(PathBuf::from);
 
+        let cache_ttl = parse_cache_ttl(env::var("CACHE_TTL").ok().as_deref())?;
+
         Ok(Self {
             jira,
             confluence,
             enabled_tools,
             read_only,
             audit_log,
+            cache_ttl,
         })
     }
+}
+
+/// Parses `CACHE_TTL`, a number of seconds. Absent, empty or `0` all mean
+/// "no caching" — the default, because a cache changes what a read returns
+/// (D25).
+fn parse_cache_ttl(raw: Option<&str>) -> Result<Option<Duration>> {
+    let Some(raw) = raw.map(str::trim).filter(|raw| !raw.is_empty()) else {
+        return Ok(None);
+    };
+    let seconds: u64 = raw.parse().map_err(|_| {
+        Error::Config(format!(
+            "CACHE_TTL must be a whole number of seconds (e.g. 300), got `{raw}`"
+        ))
+    })?;
+    Ok((seconds > 0).then(|| Duration::from_secs(seconds)))
 }
 
 /// Reads `ATLASSIAN_OAUTH_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN,CLOUD_ID}`.
@@ -168,5 +190,29 @@ impl ServiceConfig {
                  or {prefix}_PERSONAL_TOKEN (Server/Data Center)"
             ))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_cache_ttl;
+    use std::time::Duration;
+
+    #[test]
+    fn caching_is_off_unless_a_positive_ttl_is_given() {
+        for raw in [None, Some(""), Some("  "), Some("0")] {
+            assert_eq!(parse_cache_ttl(raw).unwrap(), None, "{raw:?}");
+        }
+        assert_eq!(
+            parse_cache_ttl(Some(" 300 ")).unwrap(),
+            Some(Duration::from_secs(300))
+        );
+    }
+
+    #[test]
+    fn a_non_numeric_ttl_names_the_variable_and_an_example() {
+        let error = parse_cache_ttl(Some("5m")).unwrap_err().to_string();
+        assert!(error.contains("CACHE_TTL"), "{error}");
+        assert!(error.contains("300"), "{error}");
     }
 }

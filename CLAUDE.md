@@ -48,6 +48,7 @@ optional — tools register only for configured services.
 | `ENABLED_TOOLS` | comma-separated allowlist of tool names; empty = all |
 | `READ_ONLY_MODE` | `true` → only tools annotated `readOnlyHint` are registered; writes are absent from `tools/list` (D22) |
 | `AUDIT_LOG_FILE` | path to a JSONL audit log; every write call appends one record (D23). Unset = no auditing |
+| `CACHE_TTL` | seconds to cache reference data (projects, issue types, boards, spaces, fields); unset or `0` = no caching (D25) |
 | `TRANSPORT` | `stdio` (default) or `streamable-http` (needs `--features http`) |
 | `HOST` / `PORT` / `ALLOWED_HOSTS` | HTTP transport bind address (127.0.0.1:8000) and extra Host-header allowlist (D18) |
 
@@ -57,8 +58,9 @@ optional — tools register only for configured services.
 Cargo.toml                       # workspace root: [workspace.dependencies], [workspace.lints]
 crates/
   atlassian-client/              # shared HTTP: env config, auth, retries, error
-                                 #   mapping; `mcp` feature adds ListResult /
-                                 #   StatusResult used by both products
+                                 #   mapping, opt-in TTL cache (D25); `mcp`
+                                 #   feature adds ListResult / StatusResult
+                                 #   used by both products
   storage-markdown/              # storage-XHTML <-> Markdown (htmd / comrak),
                                  #   zero Atlassian deps
   atlassian-jira/                # everything Jira
@@ -124,6 +126,10 @@ is a plain REST library (D15).
 - No new heavyweight deps without a DECISIONS.md entry; check binary size
   impact (`cargo bloat`) for anything non-trivial.
 - Tests never hit real Atlassian instances; use wiremock + fixtures (D14).
+- Caching is opt-in and for reference data only (D25). A new client method
+  that returns issues, page bodies or anything a user edits must not go
+  through `cached(...)`; if it takes narrowing arguments, they belong in the
+  cache key.
 
 ## Roadmap phases
 

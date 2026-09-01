@@ -38,17 +38,26 @@ pub struct AtlassianServer {
 
 impl AtlassianServer {
     pub fn new(config: &Config) -> atlassian_client::Result<Self> {
+        // Reference data is cached only when a TTL is configured (D25).
         let jira = config
             .jira
             .as_ref()
             .map(JiraClient::new)
             .transpose()?
+            .map(|client| match config.cache_ttl {
+                Some(ttl) => client.with_cache(ttl),
+                None => client,
+            })
             .map(|client| JiraTools::new(Arc::new(client)));
         let confluence = config
             .confluence
             .as_ref()
             .map(ConfluenceClient::new)
             .transpose()?
+            .map(|client| match config.cache_ttl {
+                Some(ttl) => client.with_cache(ttl),
+                None => client,
+            })
             .map(|client| ConfluenceTools::new(Arc::new(client)));
 
         // Product routers are defined over each product's own state; project

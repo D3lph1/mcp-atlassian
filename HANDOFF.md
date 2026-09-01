@@ -22,11 +22,14 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
   `structuredContent` (D20)
 - Resources: `jira://PROJ-123` (JSON) and `confluence://123456` (Markdown) as
   resource templates; `resources/list` intentionally empty (D24)
-- Tests: 87 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
+- TTL cache: `CACHE_TTL` seconds, reference data only (projects, issue types,
+  boards, link types, fields, spaces), off by default (D25)
+- Tests: 106 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
   docker); scratch Dockerfile
 - Binary: 3.6 MB stdio / 3.9 MB with http; idle RSS ~2 MB (target < 30 MB —
   comfortably under). The audit log added ~16 KB (chrono was already in the
-  tree via rmcp), resources ~15 KB — no new dependencies
+  tree via rmcp), resources ~15 KB, the TTL cache ~16 KB — no new
+  dependencies
 
 Deliberately not done: SSE transport (deprecated in MCP), multi-user proxy.
 
@@ -39,9 +42,7 @@ Known loose ends:
 ## Feature backlog (prioritized)
 
 ### Top (value / effort)
-- [ ] **TTL cache** (in-memory, ~5 min) for reference data: projects, issue
-      types, spaces, boards. Less latency and rate-limit pressure.
-      Was started once and reverted — see the note below.
+- [x] **TTL cache** — `CACHE_TTL` seconds, opt-in, reference data only (D25).
 - [ ] **`DRY_RUN=true`** — write tools return a description of the action
       without performing it. A safety net for demos and prompt debugging.
 
@@ -76,19 +77,18 @@ Known loose ends:
 
 ## Notes
 
-**TTL cache (reverted).** An implementation existed briefly:
-`atlassian-client/src/cache.rs` with a type-erased `TtlCache` (JSON values,
-`Mutex<HashMap>`), plus `JiraClient::with_cache` / `ConfluenceClient::with_cache`
-wrapping only reference-data methods (`get_myself`, `get_projects`,
-`get_issue_types`, `get_boards`, `get_spaces`). It was rolled back before the
-config wiring landed. The design worth keeping if it comes back: disabled by
-default (a cache changes observable behavior — a project created out of band
-stays invisible for up to one TTL), never cache issues/searches/comments/
-sprints, and include filter arguments in the cache key.
+**TTL cache (landed, D25).** The reverted first attempt came back with the
+design the note prescribed: `atlassian-client/src/cache.rs`, `with_cache` on
+both clients, off by default, filter arguments in the key, nothing cached that
+a user edits. It also covers link types and field definitions, and
+`search_fields` filters a cached full list client-side. Values are held as
+`Arc<dyn Any>` rather than JSON, so a hit costs a downcast and a clone.
+Deliberately absent: single-flight for concurrent misses, and any invalidation
+on writes — a `create_project` through this server still waits out the TTL.
 
 ## Key files
 
-- `DECISIONS.md` — 24 architecture decisions (D1–D24); read before structural
+- `DECISIONS.md` — 25 architecture decisions (D1–D25); read before structural
   changes
 - `CLAUDE.md` — commands, layout, conventions, env vars, roadmap
 - `crates/atlassian-{jira,confluence}/src/tools/` — tools, next to the

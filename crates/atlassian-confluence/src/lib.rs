@@ -12,7 +12,10 @@ pub mod resources;
 #[cfg(feature = "mcp")]
 pub mod tools;
 
-use atlassian_client::{AtlassianClient, Result, ServiceConfig};
+use std::sync::Arc;
+use std::time::Duration;
+
+use atlassian_client::{AtlassianClient, Result, ServiceConfig, TtlCache};
 use serde_json::{json, Value};
 
 pub use models::{
@@ -24,13 +27,37 @@ pub use models::{
 #[derive(Debug, Clone)]
 pub struct ConfluenceClient {
     client: AtlassianClient,
+    /// Reference data only, and only when a TTL is configured (D25).
+    cache: Option<Arc<TtlCache>>,
 }
 
 impl ConfluenceClient {
     pub fn new(config: &ServiceConfig) -> Result<Self> {
         Ok(Self {
             client: AtlassianClient::new(config)?,
+            cache: None,
         })
+    }
+
+    /// Caches the space list for `ttl`. Page content, comments, attachments
+    /// and versions are never cached — they are the things people edit (D25).
+    pub fn with_cache(mut self, ttl: Duration) -> Self {
+        self.cache = Some(Arc::new(TtlCache::new(ttl)));
+        self
+    }
+
+    /// Runs `fetch` through the cache when one is configured, unchanged
+    /// otherwise.
+    async fn cached<T, F, Fut>(&self, key: &str, fetch: F) -> Result<T>
+    where
+        T: Clone + Send + Sync + 'static,
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<T>>,
+    {
+        match &self.cache {
+            Some(cache) => cache.get_or_fetch(key, fetch).await,
+            None => fetch().await,
+        }
     }
 
     /// CQL search over content, e.g. `space = DEV AND title ~ "runbook"`.
@@ -162,9 +189,13 @@ impl ConfluenceClient {
 
     pub async fn get_spaces(&self, limit: u32) -> Result<ResultsPage<Space>> {
         let limit = limit.to_string();
-        self.client
-            .get("/rest/api/space", &[("limit", &limit)])
-            .await
+        let key = format!("spaces:{limit}");
+        self.cached(&key, || async {
+            self.client
+                .get("/rest/api/space", &[("limit", &limit)])
+                .await
+        })
+        .await
     }
 
     pub async fn get_labels(&self, page_id: &str) -> Result<ResultsPage<Label>> {

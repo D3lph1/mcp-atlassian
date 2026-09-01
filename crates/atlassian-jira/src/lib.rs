@@ -15,7 +15,10 @@ pub mod resources;
 #[cfg(feature = "mcp")]
 pub mod tools;
 
-use atlassian_client::{AtlassianClient, Auth, Result, ServiceConfig};
+use std::sync::Arc;
+use std::time::Duration;
+
+use atlassian_client::{AtlassianClient, Auth, Result, ServiceConfig, TtlCache};
 use serde_json::{json, Map, Value};
 
 pub use models::{
@@ -32,6 +35,8 @@ const DEFAULT_SEARCH_FIELDS: &str = "summary,status,assignee,issuetype,priority,
 pub struct JiraClient {
     client: AtlassianClient,
     cloud: bool,
+    /// Reference data only, and only when a TTL is configured (D25).
+    cache: Option<Arc<TtlCache>>,
 }
 
 /// Parameters for [`JiraClient::search`].
@@ -67,13 +72,38 @@ impl JiraClient {
         Ok(Self {
             client: AtlassianClient::new(config)?,
             cloud: !matches!(config.auth, Auth::Pat { .. }),
+            cache: None,
         })
+    }
+
+    /// Caches reference data — projects, issue types, boards, link types,
+    /// field definitions and the current user — for `ttl`. Everything else
+    /// keeps going to Jira on every call (D25).
+    pub fn with_cache(mut self, ttl: Duration) -> Self {
+        self.cache = Some(Arc::new(TtlCache::new(ttl)));
+        self
+    }
+
+    /// Runs `fetch` through the cache when one is configured, unchanged
+    /// otherwise. Keys are namespaced by endpoint and carry every argument
+    /// that narrows the answer.
+    async fn cached<T, F, Fut>(&self, key: &str, fetch: F) -> Result<T>
+    where
+        T: Clone + Send + Sync + 'static,
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<T>>,
+    {
+        match &self.cache {
+            Some(cache) => cache.get_or_fetch(key, fetch).await,
+            None => fetch().await,
+        }
     }
 
     /// Returns the currently authenticated user. Cheap smoke-test endpoint —
     /// also useful for verifying credentials.
     pub async fn get_myself(&self) -> Result<Myself> {
-        self.client.get("/rest/api/2/myself", &[]).await
+        self.cached("myself", || self.client.get("/rest/api/2/myself", &[]))
+            .await
     }
 
     /// JQL search. Routes to the deployment-appropriate endpoint.
@@ -204,21 +234,27 @@ impl JiraClient {
     }
 
     pub async fn get_projects(&self) -> Result<Vec<Project>> {
-        if self.cloud {
-            // Cloud deprecated the plain list endpoint in favor of the
-            // paginated one; 50 projects per page is plenty for tool use.
-            let page: models::ProjectPage = self
-                .client
-                .get("/rest/api/2/project/search", &[("maxResults", "50")])
-                .await?;
-            Ok(page.values)
-        } else {
-            self.client.get("/rest/api/2/project", &[]).await
-        }
+        self.cached("projects", || async {
+            if self.cloud {
+                // Cloud deprecated the plain list endpoint in favor of the
+                // paginated one; 50 projects per page is plenty for tool use.
+                let page: models::ProjectPage = self
+                    .client
+                    .get("/rest/api/2/project/search", &[("maxResults", "50")])
+                    .await?;
+                Ok(page.values)
+            } else {
+                self.client.get("/rest/api/2/project", &[]).await
+            }
+        })
+        .await
     }
 
     pub async fn get_issue_types(&self) -> Result<Vec<IssueType>> {
-        self.client.get("/rest/api/2/issuetype", &[]).await
+        self.cached("issue-types", || {
+            self.client.get("/rest/api/2/issuetype", &[])
+        })
+        .await
     }
 
     /// Searches users by name / email. The query parameter differs by
@@ -244,11 +280,15 @@ impl JiraClient {
         max_results: u32,
     ) -> Result<AgilePage<Board>> {
         let max_results = max_results.to_string();
-        let mut query: Vec<(&str, &str)> = vec![("maxResults", &max_results)];
-        if let Some(project) = project_key {
-            query.push(("projectKeyOrId", project));
-        }
-        self.client.get("/rest/agile/1.0/board", &query).await
+        let key = format!("boards:{}:{max_results}", project_key.unwrap_or(""));
+        self.cached(&key, || async {
+            let mut query: Vec<(&str, &str)> = vec![("maxResults", &max_results)];
+            if let Some(project) = project_key {
+                query.push(("projectKeyOrId", project));
+            }
+            self.client.get("/rest/agile/1.0/board", &query).await
+        })
+        .await
     }
 
     /// Lists sprints of a board; `state` filters by `active`, `future`, `closed`
@@ -380,7 +420,11 @@ impl JiraClient {
     /// All field definitions. Filter client-side by `query` (case-insensitive
     /// substring over name and id) — Jira has no server-side field search.
     pub async fn search_fields(&self, query: Option<&str>) -> Result<Vec<Field>> {
-        let fields: Vec<Field> = self.client.get("/rest/api/2/field", &[]).await?;
+        // The filter runs here, so the cache holds the full field list and one
+        // entry serves every query.
+        let fields: Vec<Field> = self
+            .cached("fields", || self.client.get("/rest/api/2/field", &[]))
+            .await?;
         let Some(query) = query else {
             return Ok(fields);
         };
@@ -416,9 +460,12 @@ impl JiraClient {
     // ---- Issue links -------------------------------------------------------
 
     pub async fn get_link_types(&self) -> Result<Vec<LinkType>> {
-        let resp: models::LinkTypesResponse =
-            self.client.get("/rest/api/2/issueLinkType", &[]).await?;
-        Ok(resp.issue_link_types)
+        self.cached("link-types", || async {
+            let resp: models::LinkTypesResponse =
+                self.client.get("/rest/api/2/issueLinkType", &[]).await?;
+            Ok(resp.issue_link_types)
+        })
+        .await
     }
 
     /// Links two issues. `link_type` is a type *name* (see `get_link_types`);

@@ -23,6 +23,7 @@ fn config(mock: &MockServer) -> Config {
         enabled_tools: None,
         read_only: false,
         audit_log: None,
+        cache_ttl: None,
     }
 }
 

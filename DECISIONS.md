@@ -350,3 +350,39 @@ Two smaller decisions worth keeping:
 Both products keep their resource code next to their tools
 (`src/resources.rs`), and the server crate only dispatches on the scheme — the
 same split as D15/D21, and it stays true for a third product.
+
+## D25. TTL cache: opt-in, reference data only
+`CACHE_TTL=300` (seconds) caches the answers that describe the *instance*
+rather than the work in it: `get_myself`, projects, issue types, boards, issue
+link types, Jira field definitions, Confluence spaces. Unset, empty or `0`
+means no caching — and that is the default.
+
+Off by default because a cache changes what a read returns. A project created
+out of band, a board added this morning, a custom field just introduced — each
+stays invisible for up to one TTL. That is a fine trade when an agent resolves
+the same field ids twenty times in a session, and a bad one when someone is
+watching the tool output to confirm a change they just made. The operator
+picks; the server does not decide for them.
+
+Never cached, whatever the TTL: issues, JQL/CQL searches, comments, worklogs,
+sprints, page bodies, attachments, versions, restrictions. Those are the things
+people edit, and stale answers there are indistinguishable from bugs.
+
+Mechanics:
+
+- One `TtlCache` per client (`Mutex<HashMap<String, Arc<dyn Any + Send +
+  Sync>>>`), values downcast on read. A key that holds another type is a miss
+  rather than a panic, and an entry past its deadline is a miss too. Expired
+  entries are dropped on the next insert, so the map cannot grow unbounded.
+- Keys carry every argument that narrows the answer — `boards:PROJ:50` is not
+  `boards:OPS:50`, `spaces:25` is not `spaces:50`. This is the failure the
+  first attempt at this feature was reverted for.
+- `search_fields` caches the *unfiltered* field list and filters client-side,
+  so one entry serves every query.
+- Failures are never cached: `get_or_fetch` stores only on `Ok`.
+- Two concurrent misses on one key both fetch. Single-flight machinery would
+  cost more than the extra request saves on a single-tenant server; the second
+  write simply wins.
+
+The cache is plain `std` — no `moka`, no `dashmap`, no new dependency. The
+release binary grew by ~16 KB, from 3.734 MB to 3.750 MB.

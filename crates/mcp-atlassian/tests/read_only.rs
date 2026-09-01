@@ -25,6 +25,7 @@ fn config(read_only: bool) -> Config {
         enabled_tools: None,
         read_only,
         audit_log: None,
+        cache_ttl: None,
     }
 }
 
