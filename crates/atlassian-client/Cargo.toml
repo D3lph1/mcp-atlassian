@@ -1,0 +1,30 @@
+[package]
+name = "atlassian-client"
+description = "Shared HTTP client, auth and configuration for Atlassian REST APIs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+# Shared MCP result types (ListResult / StatusResult) used by product crates.
+mcp = ["dep:rmcp", "dep:schemars"]
+
+[dependencies]
+rmcp = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+tokio = { workspace = true, features = ["time"] }
+url.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true

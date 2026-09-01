@@ -1,0 +1,46 @@
+[package]
+name = "mcp-atlassian"
+description = "Lightweight MCP server for Jira and Confluence"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "mcp-atlassian"
+path = "src/main.rs"
+
+[features]
+default = []
+# Streamable HTTP transport (TRANSPORT=streamable-http); keeps the default
+# stdio-only binary small (D7).
+http = [
+    "rmcp/transport-streamable-http-server",
+    "rmcp/transport-streamable-http-server-session",
+    "dep:axum",
+    "tokio/net",
+]
+
+[dependencies]
+axum = { workspace = true, optional = true }
+atlassian-client = { workspace = true, features = ["mcp"] }
+atlassian-jira = { workspace = true, features = ["mcp"] }
+atlassian-confluence = { workspace = true, features = ["mcp"] }
+storage-markdown.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "io-std", "signal", "fs"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rmcp.workspace = true
+schemars.workspace = true
+
+[dev-dependencies]
+rmcp = { workspace = true, features = ["client"] }
+wiremock.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "io-util"] }
+serde_json.workspace = true
+
+[lints]
+workspace = true

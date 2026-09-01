@@ -1,0 +1,611 @@
+//! Jira REST API v2 client.
+//!
+//! v2 is used for both Cloud and Server/Data Center — one code path, no ADF
+//! (see DECISIONS.md D5). Models deserialize only the fields we actually use.
+//!
+//! The one endpoint that diverges is search: Cloud removed `/rest/api/2/search`
+//! in favor of the token-paginated `/rest/api/2/search/jql`, while Server/DC
+//! still uses the offset-paginated original. Deployment is inferred from the
+//! auth mode: API token (Basic) => Cloud, PAT (Bearer) => Server/DC (D6).
+
+mod models;
+
+#[cfg(feature = "mcp")]
+pub mod tools;
+
+use atlassian_client::{AtlassianClient, Auth, Result, ServiceConfig};
+use serde_json::{json, Map, Value};
+
+pub use models::{
+    AgilePage, Attachment, BatchCreateResult, Board, ChangelogEntry, ChangelogItem, Comment,
+    CommentPage, CreatedIssue, Field, FieldOption, FieldSchema, Issue, IssueFields, IssueType,
+    LinkType, Myself, Named, Project, SearchPage, Sprint, Transition, User, Watchers, Worklog,
+    WorklogEntry,
+};
+
+/// Default fields requested by search — compact but useful for an LLM.
+const DEFAULT_SEARCH_FIELDS: &str = "summary,status,assignee,issuetype,priority,created,updated";
+
+#[derive(Debug, Clone)]
+pub struct JiraClient {
+    client: AtlassianClient,
+    cloud: bool,
+}
+
+/// Parameters for [`JiraClient::search`].
+#[derive(Debug, Clone, Default)]
+pub struct SearchParams {
+    pub jql: String,
+    pub max_results: u32,
+    /// Comma-separated field list; defaults to [`DEFAULT_SEARCH_FIELDS`].
+    pub fields: Option<String>,
+    /// Server/DC offset pagination.
+    pub start_at: Option<u32>,
+    /// Cloud token pagination.
+    pub next_page_token: Option<String>,
+}
+
+/// Parameters for [`JiraClient::create_issue`].
+#[derive(Debug, Clone, Default)]
+pub struct CreateIssueParams {
+    pub project_key: String,
+    pub issue_type: String,
+    pub summary: String,
+    pub description: Option<String>,
+    /// Cloud: account id; Server/DC: username.
+    pub assignee: Option<String>,
+    pub priority: Option<String>,
+    pub labels: Vec<String>,
+    /// Extra raw fields merged into the `fields` object (e.g. custom fields).
+    pub additional_fields: Option<Map<String, Value>>,
+}
+
+impl JiraClient {
+    pub fn new(config: &ServiceConfig) -> Result<Self> {
+        Ok(Self {
+            client: AtlassianClient::new(config)?,
+            cloud: !matches!(config.auth, Auth::Pat { .. }),
+        })
+    }
+
+    /// Returns the currently authenticated user. Cheap smoke-test endpoint —
+    /// also useful for verifying credentials.
+    pub async fn get_myself(&self) -> Result<Myself> {
+        self.client.get("/rest/api/2/myself", &[]).await
+    }
+
+    /// JQL search. Routes to the deployment-appropriate endpoint.
+    pub async fn search(&self, params: &SearchParams) -> Result<SearchPage> {
+        let max_results = params.max_results.to_string();
+        let fields = params.fields.as_deref().unwrap_or(DEFAULT_SEARCH_FIELDS);
+        let mut query: Vec<(&str, &str)> = vec![
+            ("jql", &params.jql),
+            ("maxResults", &max_results),
+            ("fields", fields),
+        ];
+
+        if self.cloud {
+            if let Some(token) = &params.next_page_token {
+                query.push(("nextPageToken", token));
+            }
+            self.client.get("/rest/api/2/search/jql", &query).await
+        } else {
+            let start_at = params.start_at.unwrap_or(0).to_string();
+            query.push(("startAt", &start_at));
+            self.client.get("/rest/api/2/search", &query).await
+        }
+    }
+
+    pub async fn get_issue(&self, key: &str, fields: Option<&str>) -> Result<Issue> {
+        let path = format!("/rest/api/2/issue/{key}");
+        let query: Vec<(&str, &str)> = fields.map(|f| ("fields", f)).into_iter().collect();
+        self.client.get(&path, &query).await
+    }
+
+    pub async fn create_issue(&self, params: &CreateIssueParams) -> Result<CreatedIssue> {
+        let mut fields = Map::new();
+        fields.insert("project".into(), json!({ "key": params.project_key }));
+        fields.insert("issuetype".into(), json!({ "name": params.issue_type }));
+        fields.insert("summary".into(), json!(params.summary));
+        if let Some(description) = &params.description {
+            fields.insert("description".into(), json!(description));
+        }
+        if let Some(assignee) = &params.assignee {
+            fields.insert("assignee".into(), self.user_ref(assignee));
+        }
+        if let Some(priority) = &params.priority {
+            fields.insert("priority".into(), json!({ "name": priority }));
+        }
+        if !params.labels.is_empty() {
+            fields.insert("labels".into(), json!(params.labels));
+        }
+        if let Some(extra) = &params.additional_fields {
+            fields.extend(extra.clone());
+        }
+        self.client
+            .post("/rest/api/2/issue", &json!({ "fields": fields }))
+            .await
+    }
+
+    /// Raw field update: `fields` is passed through as the `fields` object of
+    /// `PUT /rest/api/2/issue/{key}`. Use for summary, description, labels,
+    /// priority, custom fields, etc.
+    pub async fn update_issue(&self, key: &str, fields: &Map<String, Value>) -> Result<()> {
+        let path = format!("/rest/api/2/issue/{key}");
+        self.client
+            .put_no_content(&path, &json!({ "fields": fields }))
+            .await
+    }
+
+    pub async fn delete_issue(&self, key: &str, delete_subtasks: bool) -> Result<()> {
+        let path = format!("/rest/api/2/issue/{key}");
+        let subtasks = delete_subtasks.to_string();
+        self.client
+            .delete(&path, &[("deleteSubtasks", &subtasks)])
+            .await
+    }
+
+    pub async fn get_transitions(&self, key: &str) -> Result<Vec<Transition>> {
+        let path = format!("/rest/api/2/issue/{key}/transitions");
+        let resp: models::TransitionsResponse = self.client.get(&path, &[]).await?;
+        Ok(resp.transitions)
+    }
+
+    pub async fn transition_issue(
+        &self,
+        key: &str,
+        transition_id: &str,
+        comment: Option<&str>,
+    ) -> Result<()> {
+        let path = format!("/rest/api/2/issue/{key}/transitions");
+        let mut body = json!({ "transition": { "id": transition_id } });
+        if let Some(comment) = comment {
+            body["update"] = json!({ "comment": [{ "add": { "body": comment } }] });
+        }
+        self.client.post_no_content(&path, &body).await
+    }
+
+    pub async fn add_comment(&self, key: &str, body: &str) -> Result<Comment> {
+        let path = format!("/rest/api/2/issue/{key}/comment");
+        self.client.post(&path, &json!({ "body": body })).await
+    }
+
+    pub async fn get_comments(&self, key: &str, max_results: u32) -> Result<CommentPage> {
+        let path = format!("/rest/api/2/issue/{key}/comment");
+        let max_results = max_results.to_string();
+        self.client
+            .get(
+                &path,
+                &[("maxResults", &max_results), ("orderBy", "-created")],
+            )
+            .await
+    }
+
+    /// `time_spent` uses Jira duration syntax ("2h", "1d 4h", "30m").
+    /// `started` is an ISO-8601 timestamp like `2026-01-15T10:00:00.000+0000`.
+    pub async fn add_worklog(
+        &self,
+        key: &str,
+        time_spent: &str,
+        comment: Option<&str>,
+        started: Option<&str>,
+    ) -> Result<Worklog> {
+        let path = format!("/rest/api/2/issue/{key}/worklog");
+        let mut body = json!({ "timeSpent": time_spent });
+        if let Some(comment) = comment {
+            body["comment"] = json!(comment);
+        }
+        if let Some(started) = started {
+            body["started"] = json!(started);
+        }
+        self.client.post(&path, &body).await
+    }
+
+    pub async fn get_projects(&self) -> Result<Vec<Project>> {
+        if self.cloud {
+            // Cloud deprecated the plain list endpoint in favor of the
+            // paginated one; 50 projects per page is plenty for tool use.
+            let page: models::ProjectPage = self
+                .client
+                .get("/rest/api/2/project/search", &[("maxResults", "50")])
+                .await?;
+            Ok(page.values)
+        } else {
+            self.client.get("/rest/api/2/project", &[]).await
+        }
+    }
+
+    pub async fn get_issue_types(&self) -> Result<Vec<IssueType>> {
+        self.client.get("/rest/api/2/issuetype", &[]).await
+    }
+
+    /// Searches users by name / email. The query parameter differs by
+    /// deployment: Cloud matches display name and email via `query`,
+    /// Server/DC matches the username via `username` (D16).
+    pub async fn search_users(&self, query: &str, max_results: u32) -> Result<Vec<User>> {
+        let max_results = max_results.to_string();
+        let param = if self.cloud { "query" } else { "username" };
+        self.client
+            .get(
+                "/rest/api/2/user/search",
+                &[(param, query), ("maxResults", &max_results)],
+            )
+            .await
+    }
+
+    // ---- Agile API (/rest/agile/1.0, same shape on Cloud and Server/DC) ----
+
+    /// Lists boards, optionally filtered by project key.
+    pub async fn get_boards(
+        &self,
+        project_key: Option<&str>,
+        max_results: u32,
+    ) -> Result<AgilePage<Board>> {
+        let max_results = max_results.to_string();
+        let mut query: Vec<(&str, &str)> = vec![("maxResults", &max_results)];
+        if let Some(project) = project_key {
+            query.push(("projectKeyOrId", project));
+        }
+        self.client.get("/rest/agile/1.0/board", &query).await
+    }
+
+    /// Lists sprints of a board; `state` filters by `active`, `future`, `closed`
+    /// (comma-separated allowed).
+    pub async fn get_sprints(
+        &self,
+        board_id: u64,
+        state: Option<&str>,
+    ) -> Result<AgilePage<Sprint>> {
+        let path = format!("/rest/agile/1.0/board/{board_id}/sprint");
+        let query: Vec<(&str, &str)> = state.map(|s| ("state", s)).into_iter().collect();
+        self.client.get(&path, &query).await
+    }
+
+    pub async fn get_sprint_issues(&self, sprint_id: u64, max_results: u32) -> Result<SearchPage> {
+        let path = format!("/rest/agile/1.0/sprint/{sprint_id}/issue");
+        let max_results = max_results.to_string();
+        self.client
+            .get(
+                &path,
+                &[
+                    ("maxResults", &max_results),
+                    ("fields", DEFAULT_SEARCH_FIELDS),
+                ],
+            )
+            .await
+    }
+
+    /// Moves issues into a sprint (max 50 per call, Agile API limit).
+    pub async fn move_issues_to_sprint(&self, sprint_id: u64, issue_keys: &[String]) -> Result<()> {
+        let path = format!("/rest/agile/1.0/sprint/{sprint_id}/issue");
+        self.client
+            .post_no_content(&path, &json!({ "issues": issue_keys }))
+            .await
+    }
+
+    // ---- Attachments -------------------------------------------------------
+
+    pub async fn get_attachments(&self, key: &str) -> Result<Vec<Attachment>> {
+        let path = format!("/rest/api/2/issue/{key}");
+        let resp: models::IssueAttachments =
+            self.client.get(&path, &[("fields", "attachment")]).await?;
+        Ok(resp.fields.attachment)
+    }
+
+    /// Downloads an attachment binary from its `content` URL (must be
+    /// same-origin with the configured Jira base URL).
+    pub async fn download_attachment(&self, content_url: &str) -> Result<Vec<u8>> {
+        self.client.get_bytes(content_url).await
+    }
+
+    /// Uploads one file as an attachment; returns the created attachment(s).
+    pub async fn upload_attachment(
+        &self,
+        key: &str,
+        file_name: &str,
+        bytes: Vec<u8>,
+    ) -> Result<Vec<Attachment>> {
+        let path = format!("/rest/api/2/issue/{key}/attachments");
+        self.client.post_multipart(&path, file_name, bytes).await
+    }
+
+    // ---- Users and watchers ------------------------------------------------
+
+    /// Looks up one user by identifier: account id on Cloud, username on
+    /// Server/DC.
+    pub async fn get_user_profile(&self, identifier: &str) -> Result<User> {
+        let param = if self.cloud { "accountId" } else { "username" };
+        self.client
+            .get("/rest/api/2/user", &[(param, identifier)])
+            .await
+    }
+
+    /// Users assignable to a project (or to a specific issue when `issue_key`
+    /// is given) — narrower and more correct than a plain user search, since
+    /// it respects the project's assignable permission.
+    pub async fn search_assignable_users(
+        &self,
+        query: &str,
+        project_key: Option<&str>,
+        issue_key: Option<&str>,
+        max_results: u32,
+    ) -> Result<Vec<User>> {
+        let max_results = max_results.to_string();
+        let query_param = if self.cloud { "query" } else { "username" };
+        let mut params: Vec<(&str, &str)> =
+            vec![(query_param, query), ("maxResults", &max_results)];
+        if let Some(issue) = issue_key {
+            params.push(("issueKey", issue));
+        } else if let Some(project) = project_key {
+            params.push(("project", project));
+        }
+        self.client
+            .get("/rest/api/2/user/assignable/search", &params)
+            .await
+    }
+
+    pub async fn get_watchers(&self, key: &str) -> Result<Watchers> {
+        let path = format!("/rest/api/2/issue/{key}/watchers");
+        self.client.get(&path, &[]).await
+    }
+
+    /// The watcher endpoint takes a bare JSON string body: an account id on
+    /// Cloud, a username on Server/DC.
+    pub async fn add_watcher(&self, key: &str, user: &str) -> Result<()> {
+        let path = format!("/rest/api/2/issue/{key}/watchers");
+        self.client.post_no_content(&path, &json!(user)).await
+    }
+
+    pub async fn remove_watcher(&self, key: &str, user: &str) -> Result<()> {
+        let path = format!("/rest/api/2/issue/{key}/watchers");
+        let param = if self.cloud { "accountId" } else { "username" };
+        self.client.delete(&path, &[(param, user)]).await
+    }
+
+    /// Dedicated assignment endpoint. Passing `None` unassigns the issue.
+    pub async fn assign_issue(&self, key: &str, assignee: Option<&str>) -> Result<()> {
+        let path = format!("/rest/api/2/issue/{key}/assignee");
+        let body = match assignee {
+            Some(user) => self.user_ref(user),
+            None if self.cloud => json!({ "accountId": null }),
+            None => json!({ "name": null }),
+        };
+        self.client.put_no_content(&path, &body).await
+    }
+
+    // ---- Fields ------------------------------------------------------------
+
+    /// All field definitions. Filter client-side by `query` (case-insensitive
+    /// substring over name and id) — Jira has no server-side field search.
+    pub async fn search_fields(&self, query: Option<&str>) -> Result<Vec<Field>> {
+        let fields: Vec<Field> = self.client.get("/rest/api/2/field", &[]).await?;
+        let Some(query) = query else {
+            return Ok(fields);
+        };
+        let needle = query.to_lowercase();
+        Ok(fields
+            .into_iter()
+            .filter(|f| {
+                f.name.to_lowercase().contains(&needle) || f.id.to_lowercase().contains(&needle)
+            })
+            .collect())
+    }
+
+    /// Allowed values of a custom select-like field. Cloud exposes them
+    /// through the field context API; Server/DC through the field itself.
+    pub async fn get_field_options(
+        &self,
+        field_id: &str,
+        max_results: u32,
+    ) -> Result<Vec<FieldOption>> {
+        let max_results = max_results.to_string();
+        let path = if self.cloud {
+            format!("/rest/api/2/field/{field_id}/option")
+        } else {
+            format!("/rest/api/2/customField/{field_id}/option")
+        };
+        let page: models::FieldOptionsPage = self
+            .client
+            .get(&path, &[("maxResults", &max_results)])
+            .await?;
+        Ok(page.values)
+    }
+
+    // ---- Issue links -------------------------------------------------------
+
+    pub async fn get_link_types(&self) -> Result<Vec<LinkType>> {
+        let resp: models::LinkTypesResponse =
+            self.client.get("/rest/api/2/issueLinkType", &[]).await?;
+        Ok(resp.issue_link_types)
+    }
+
+    /// Links two issues. `link_type` is a type *name* (see `get_link_types`);
+    /// direction follows the type's inward/outward phrasing.
+    pub async fn create_issue_link(
+        &self,
+        link_type: &str,
+        inward_issue: &str,
+        outward_issue: &str,
+        comment: Option<&str>,
+    ) -> Result<()> {
+        let mut body = json!({
+            "type": { "name": link_type },
+            "inwardIssue": { "key": inward_issue },
+            "outwardIssue": { "key": outward_issue },
+        });
+        if let Some(comment) = comment {
+            body["comment"] = json!({ "body": comment });
+        }
+        self.client
+            .post_no_content("/rest/api/2/issueLink", &body)
+            .await
+    }
+
+    pub async fn remove_issue_link(&self, link_id: &str) -> Result<()> {
+        let path = format!("/rest/api/2/issueLink/{link_id}");
+        self.client.delete(&path, &[]).await
+    }
+
+    /// Attaches an external URL (or Confluence page) to an issue as a remote
+    /// link.
+    pub async fn create_remote_issue_link(
+        &self,
+        key: &str,
+        url: &str,
+        title: &str,
+        summary: Option<&str>,
+    ) -> Result<Value> {
+        let path = format!("/rest/api/2/issue/{key}/remotelink");
+        let mut object = json!({ "url": url, "title": title });
+        if let Some(summary) = summary {
+            object["summary"] = json!(summary);
+        }
+        self.client.post(&path, &json!({ "object": object })).await
+    }
+
+    /// Puts an issue under an epic. Cloud uses the `parent` field; Server/DC
+    /// uses the "Epic Link" custom field, whose id varies per instance and is
+    /// resolved through the field list.
+    pub async fn link_to_epic(&self, key: &str, epic_key: &str) -> Result<()> {
+        let mut fields = Map::new();
+        if self.cloud {
+            fields.insert("parent".into(), json!({ "key": epic_key }));
+        } else {
+            let epic_field = self
+                .search_fields(Some("Epic Link"))
+                .await?
+                .into_iter()
+                .find(|f| f.name.eq_ignore_ascii_case("Epic Link"))
+                .ok_or_else(|| {
+                    atlassian_client::Error::Config(
+                        "this instance has no `Epic Link` field; link the issue via \
+                         jira_create_issue_link instead"
+                            .into(),
+                    )
+                })?;
+            fields.insert(epic_field.id, json!(epic_key));
+        }
+        self.update_issue(key, &fields).await
+    }
+
+    // ---- Comments and worklog ----------------------------------------------
+
+    pub async fn edit_comment(&self, key: &str, comment_id: &str, body: &str) -> Result<Comment> {
+        let path = format!("/rest/api/2/issue/{key}/comment/{comment_id}");
+        self.client.put(&path, &json!({ "body": body })).await
+    }
+
+    pub async fn get_worklog(&self, key: &str) -> Result<Vec<WorklogEntry>> {
+        let path = format!("/rest/api/2/issue/{key}/worklog");
+        let page: models::WorklogPage = self.client.get(&path, &[]).await?;
+        Ok(page.worklogs)
+    }
+
+    // ---- Batch and history -------------------------------------------------
+
+    /// Creates several issues in one request. Each entry is a raw `fields`
+    /// object, so custom fields pass straight through.
+    pub async fn batch_create_issues(
+        &self,
+        issues: Vec<Map<String, Value>>,
+    ) -> Result<BatchCreateResult> {
+        let updates: Vec<Value> = issues
+            .into_iter()
+            .map(|fields| json!({ "fields": fields }))
+            .collect();
+        self.client
+            .post(
+                "/rest/api/2/issue/bulk",
+                &json!({ "issueUpdates": updates }),
+            )
+            .await
+    }
+
+    /// Change history of one issue. Cloud has a dedicated paginated endpoint;
+    /// Server/DC returns it via `expand=changelog` on the issue.
+    pub async fn get_changelog(&self, key: &str, max_results: u32) -> Result<Vec<ChangelogEntry>> {
+        if self.cloud {
+            let path = format!("/rest/api/2/issue/{key}/changelog");
+            let max_results = max_results.to_string();
+            let page: models::ChangelogPage = self
+                .client
+                .get(&path, &[("maxResults", &max_results)])
+                .await?;
+            Ok(page.values)
+        } else {
+            let path = format!("/rest/api/2/issue/{key}");
+            let issue: Value = self.client.get(&path, &[("expand", "changelog")]).await?;
+            let page: models::ChangelogPage =
+                serde_json::from_value(issue.get("changelog").cloned().unwrap_or(json!({})))
+                    .map_err(|e| atlassian_client::Error::Decode(e.to_string()))?;
+            Ok(page.histories)
+        }
+    }
+
+    // ---- Project and board queries -----------------------------------------
+
+    /// Convenience wrapper over JQL for "everything in this project".
+    pub async fn get_project_issues(
+        &self,
+        project_key: &str,
+        max_results: u32,
+    ) -> Result<SearchPage> {
+        self.search(&SearchParams {
+            jql: format!("project = \"{project_key}\" ORDER BY created DESC"),
+            max_results,
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Issues on a board, optionally narrowed by JQL.
+    pub async fn get_board_issues(
+        &self,
+        board_id: u64,
+        jql: Option<&str>,
+        max_results: u32,
+    ) -> Result<SearchPage> {
+        let path = format!("/rest/agile/1.0/board/{board_id}/issue");
+        let max_results = max_results.to_string();
+        let mut params: Vec<(&str, &str)> = vec![
+            ("maxResults", &max_results),
+            ("fields", DEFAULT_SEARCH_FIELDS),
+        ];
+        if let Some(jql) = jql {
+            params.push(("jql", jql));
+        }
+        self.client.get(&path, &params).await
+    }
+
+    /// Cloud references users by account id, Server/DC by username (D5/D6).
+    fn user_ref(&self, user: &str) -> Value {
+        if self.cloud {
+            json!({ "accountId": user })
+        } else {
+            json!({ "name": user })
+        }
+    }
+}
+
+/// MCP tool state for Jira: the client the tools operate on.
+///
+/// Tools are inherent methods on this type (`#[tool_router]` requires that),
+/// so they live in this crate next to the client they call. The MCP server
+/// composes the resulting router onto its own state — see the `mcp-atlassian`
+/// crate.
+#[cfg(feature = "mcp")]
+#[derive(Debug, Clone)]
+pub struct JiraTools {
+    client: std::sync::Arc<JiraClient>,
+}
+
+#[cfg(feature = "mcp")]
+impl JiraTools {
+    pub fn new(client: std::sync::Arc<JiraClient>) -> Self {
+        Self { client }
+    }
+
+    pub(crate) fn client(&self) -> &JiraClient {
+        &self.client
+    }
+}

@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/atlassian-client",
+    "crates/atlassian-jira",
+    "crates/atlassian-confluence",
+    "crates/storage-markdown",
+    "crates/mcp-atlassian",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/d3lph1/mcp-atlassian"
+
+[workspace.dependencies]
+atlassian-client = { path = "crates/atlassian-client" }
+atlassian-jira = { path = "crates/atlassian-jira" }
+atlassian-confluence = { path = "crates/atlassian-confluence" }
+storage-markdown = { path = "crates/storage-markdown" }
+
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "multipart"] }
+tokio = { version = "1", default-features = false }
+url = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rmcp = { version = "3", features = ["server", "transport-io"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+schemars = "1"
+wiremock = "0.6"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+# Size-optimized release profile (see DECISIONS.md D12)
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+opt-level = "z"
