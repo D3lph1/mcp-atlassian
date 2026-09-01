@@ -8,6 +8,8 @@
 mod models;
 
 #[cfg(feature = "mcp")]
+pub mod resources;
+#[cfg(feature = "mcp")]
 pub mod tools;
 
 use atlassian_client::{AtlassianClient, Result, ServiceConfig};

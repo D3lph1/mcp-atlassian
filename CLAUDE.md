@@ -64,11 +64,13 @@ crates/
   atlassian-jira/                # everything Jira
     src/lib.rs                   #   REST v2 client + JiraTools (tool state)
     src/models.rs
+    src/resources.rs             #   `jira://PROJ-123` as an MCP resource (D24)
     src/tools/                   #   meta, users, search, issues, transitions,
                                  #     comments, links, fields, agile, attachments
   atlassian-confluence/          # everything Confluence
     src/lib.rs                   #   REST client + ConfluenceTools
     src/models.rs
+    src/resources.rs             #   `confluence://123456` as an MCP resource (D24)
     src/tools/                   #   search, pages, comments, spaces, attachments,
                                  #     versions, admin, storage (projections)
   mcp-atlassian/                 # the server; contains no product knowledge
@@ -94,6 +96,11 @@ Adding a domain: new file with `#[tool_router(router = <product>_<domain>_router
 vis = "pub(crate)")]` plus one `+=` line in that product's `tools/mod.rs`.
 Adding a product: new crate exposing `tools::router()` over its own state, plus
 one `project_router(...)` call in `AtlassianServer::new`.
+
+Resources work the same way: a product exposes `resources::{URI_PREFIX,
+templates}` plus `read_resource(uri)` on its tool state, and `server.rs`
+dispatches on the URI prefix (D24). `resources/list` is empty by design —
+issues and pages are unbounded; the templates carry the URI shapes.
 
 The `mcp` feature is what pulls rmcp into a product crate; without it the crate
 is a plain REST library (D15).

@@ -268,6 +268,7 @@ deserve a confirmation prompt, independent of this mode.
 Guarding the guard: tests assert that every tool declares a hint, and
 cross-check each annotation against what the tool's name implies, so a
 mislabeled tool fails the suite rather than quietly widening read-only mode.
+
 ## D23. Audit log: JSONL, driven by the same annotations as read-only mode
 `AUDIT_LOG_FILE=/path/audit.jsonl` appends one JSON object per **write** call:
 
@@ -315,3 +316,37 @@ to 3.719 MB.
 Not covered: there is no user identity in the record, because the server
 authenticates as exactly one Atlassian account (D6/D17) — the account is a
 property of the process, not of the call.
+
+## D24. Resources: two URI templates, no enumeration
+`jira://PROJ-123` and `confluence://123456` are readable as MCP resources, so a
+client can attach an issue or a page to the context without a tool call.
+
+- Jira returns **JSON** — an issue is a record, and the field list is pinned to
+  exactly what `IssueFields` models (D4), not "all fields", which would drag in
+  every custom field the instance has.
+- Confluence returns **Markdown** with the title as an H1 — the body is
+  Markdown everywhere else in this server (D10), and a resource carries only
+  contents, so the title has nowhere else to go.
+
+`resources/list` is **empty on purpose**. The resources here are every issue
+and every page; enumerating them is unbounded and would turn a listing into a
+paginated crawl of the instance. The templates in `resources/templates/list`
+carry the URI shapes, and discovery stays with the search tools, which is what
+their descriptions already tell the model to use first.
+
+Two smaller decisions worth keeping:
+
+- **No `Url::parse`.** It treats the part before the first slash as a host and
+  lowercases it, so `jira://PROJ-123` would arrive as `proj-123` — a key Jira
+  does not have. The URIs are parsed by prefix instead, and anything beyond a
+  bare key or id (`jira://PROJ-1/comments`, a query string) is rejected with
+  the expected shape in the message (D13).
+- **Resources follow the tool surface.** A product serves resources only when
+  its service is configured *and* at least one of its tools survived filtering.
+  Otherwise `ENABLED_TOOLS=confluence_search` would still leave `jira://` as a
+  way to read Jira — an allowlist that only narrows half the surface is worse
+  than none. `READ_ONLY_MODE` needs no such rule: resources are reads.
+
+Both products keep their resource code next to their tools
+(`src/resources.rs`), and the server crate only dispatches on the scheme — the
+same split as D15/D21, and it stays true for a third product.

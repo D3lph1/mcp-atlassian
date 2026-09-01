@@ -20,11 +20,13 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
 - Markdown ↔ Confluence storage (htmd/comrak, D10)
 - Structured output: every tool advertises an `outputSchema` and returns
   `structuredContent` (D20)
-- Tests: 74 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
+- Resources: `jira://PROJ-123` (JSON) and `confluence://123456` (Markdown) as
+  resource templates; `resources/list` intentionally empty (D24)
+- Tests: 87 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
   docker); scratch Dockerfile
 - Binary: 3.6 MB stdio / 3.9 MB with http; idle RSS ~2 MB (target < 30 MB —
   comfortably under). The audit log added ~16 KB (chrono was already in the
-  tree via rmcp)
+  tree via rmcp), resources ~15 KB — no new dependencies
 
 Deliberately not done: SSE transport (deprecated in MCP), multi-user proxy.
 
@@ -44,8 +46,10 @@ Known loose ends:
       without performing it. A safety net for demos and prompt debugging.
 
 ### MCP protocol features (rmcp supports them)
-- [ ] **Resources** — `jira://PROJ-123`, `confluence://12345` as MCP resources
-      (resource templates)
+- [x] **Resources** — `jira://PROJ-123`, `confluence://123456` as resource
+      templates (D24). Possible follow-ups: sub-resources
+      (`jira://PROJ-1/comments`), and `resources/list` seeded from recently
+      updated items if a client turns out to need a non-empty list.
 - [ ] **Prompts** — ready-made: sprint standup, bug triage, release notes from
       JQL. A differentiator against other implementations.
 - [ ] **Elicitation** — confirmation for destructive tools through the client.
@@ -84,7 +88,7 @@ sprints, and include filter arguments in the cache key.
 
 ## Key files
 
-- `DECISIONS.md` — 23 architecture decisions (D1–D23); read before structural
+- `DECISIONS.md` — 24 architecture decisions (D1–D24); read before structural
   changes
 - `CLAUDE.md` — commands, layout, conventions, env vars, roadmap
 - `crates/atlassian-{jira,confluence}/src/tools/` — tools, next to the

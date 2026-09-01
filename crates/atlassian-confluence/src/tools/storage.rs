@@ -60,7 +60,7 @@ pub(super) fn to_storage(content: &str, format: Option<&str>) -> Result<String, 
 
 /// Projects a Confluence content entity into the LLM-facing view, converting
 /// the storage body to Markdown (D10).
-pub(super) fn page_to_markdown_view(page: &Content) -> PageView {
+pub(crate) fn page_to_markdown_view(page: &Content) -> PageView {
     PageView {
         id: page.id.clone(),
         content_type: page.content_type.clone(),
