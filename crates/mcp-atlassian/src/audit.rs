@@ -5,7 +5,7 @@
 //! outcome. Reads are never logged — they are the bulk of the traffic and
 //! change nothing.
 //!
-//! What counts as a write comes from the same annotation `READ_ONLY_MODE`
+//! What counts as a write comes from the same annotation `READ_ONLY`
 //! filters on (D22), so a tool cannot be audited by one and ignored by the
 //! other, and an unannotated tool is audited rather than silently skipped.
 
@@ -27,6 +27,9 @@ use serde_json::{Map, Value};
 pub struct AuditLog {
     file: Arc<Mutex<File>>,
     path: Arc<PathBuf>,
+    /// Stamped onto every record when `DRY_RUN` is on (D26). Without it the
+    /// log would claim writes that never left the process.
+    dry_run: bool,
 }
 
 /// One line of the log.
@@ -47,6 +50,10 @@ struct Entry<'a> {
     /// deletes and status changes without a JSON parser.
     #[serde(skip_serializing_if = "is_false")]
     destructive: bool,
+    /// Present only when true: the call was intercepted by `DRY_RUN` and
+    /// nothing was written (D26).
+    #[serde(skip_serializing_if = "is_false")]
+    dry_run: bool,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -54,12 +61,14 @@ fn is_false(value: &bool) -> bool {
 }
 
 impl AuditLog {
-    /// Opens (or creates) the log for appending.
-    pub fn open(path: &Path) -> std::io::Result<Self> {
+    /// Opens (or creates) the log for appending. `dry_run` marks every record
+    /// this log will write as an intercepted call.
+    pub fn open(path: &Path, dry_run: bool) -> std::io::Result<Self> {
         let file = OpenOptions::new().create(true).append(true).open(path)?;
         Ok(Self {
             file: Arc::new(Mutex::new(file)),
             path: Arc::new(path.to_path_buf()),
+            dry_run,
         })
     }
 
@@ -81,6 +90,7 @@ impl AuditLog {
             error,
             duration_ms: elapsed.as_millis() as u64,
             destructive,
+            dry_run: self.dry_run,
         });
     }
 
@@ -141,7 +151,7 @@ where
     let mut instrumented = ToolRouter::new();
     for (_, route) in router.map {
         let annotations = route.attr.annotations.as_ref();
-        // Unannotated counts as a write, matching READ_ONLY_MODE (D22).
+        // Unannotated counts as a write, matching READ_ONLY (D22).
         let read_only = annotations.and_then(|a| a.read_only_hint).unwrap_or(false);
         if read_only {
             instrumented.add_route(route);

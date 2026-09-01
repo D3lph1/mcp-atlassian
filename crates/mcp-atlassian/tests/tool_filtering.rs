@@ -32,6 +32,7 @@ fn full_config() -> Config {
         confluence: Some(confluence_config()),
         enabled_tools: None,
         read_only: false,
+        dry_run: false,
         audit_log: None,
         cache_ttl: None,
     }
@@ -59,6 +60,7 @@ fn unconfigured_service_tools_are_absent() {
 fn read_only_mode_removes_all_write_tools() {
     let config = Config {
         read_only: true,
+        dry_run: false,
         ..full_config()
     };
     let server = AtlassianServer::new(&config).unwrap();
@@ -109,6 +111,7 @@ fn read_only_wins_over_allowlist() {
     let config = Config {
         enabled_tools: Some(HashSet::from(["jira_create_issue".to_string()])),
         read_only: true,
+        dry_run: false,
         ..full_config()
     };
     let server = AtlassianServer::new(&config).unwrap();

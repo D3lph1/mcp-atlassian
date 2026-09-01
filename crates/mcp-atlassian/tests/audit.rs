@@ -36,6 +36,7 @@ fn config(mock: &MockServer, audit_log: &Path) -> Config {
         confluence: None,
         enabled_tools: None,
         read_only: false,
+        dry_run: false,
         audit_log: Some(audit_log.to_path_buf()),
         cache_ttl: None,
     }
@@ -237,6 +238,7 @@ fn an_unwritable_audit_path_fails_at_startup() {
         confluence: None,
         enabled_tools: None,
         read_only: false,
+        dry_run: false,
         audit_log: Some(PathBuf::from("/nonexistent-directory/audit.jsonl")),
         cache_ttl: None,
     };

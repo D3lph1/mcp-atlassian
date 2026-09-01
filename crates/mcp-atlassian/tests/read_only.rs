@@ -1,4 +1,4 @@
-//! `READ_ONLY_MODE`: only tools annotated `readOnlyHint: true` are registered.
+//! `READ_ONLY`: only tools annotated `readOnlyHint: true` are registered.
 //!
 //! The annotation is the single source of truth, so these tests double as a
 //! guard — a new tool that forgets it is treated as a write and shows up here.
@@ -24,6 +24,7 @@ fn config(read_only: bool) -> Config {
         confluence: Some(service()),
         enabled_tools: None,
         read_only,
+        dry_run: false,
         audit_log: None,
         cache_ttl: None,
     }
@@ -62,7 +63,7 @@ fn every_tool_declares_whether_it_is_read_only() {
         let hint = tool.annotations.as_ref().and_then(|a| a.read_only_hint);
         assert!(
             hint.is_some(),
-            "{} has no readOnlyHint — READ_ONLY_MODE would treat it as a write",
+            "{} has no readOnlyHint — READ_ONLY would treat it as a write",
             tool.name
         );
     }
@@ -102,7 +103,7 @@ fn read_only_mode_registers_only_read_tools() {
     for name in &allowed {
         assert!(
             !looks_like_a_write(name),
-            "write tool {name} is available in READ_ONLY_MODE"
+            "write tool {name} is available in READ_ONLY"
         );
     }
 
@@ -116,7 +117,7 @@ fn read_only_mode_registers_only_read_tools() {
         if read_only_tool {
             assert!(
                 allowed.contains(tool.name.as_ref()),
-                "read tool {} went missing in READ_ONLY_MODE",
+                "read tool {} went missing in READ_ONLY",
                 tool.name
             );
         }

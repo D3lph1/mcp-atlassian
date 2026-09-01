@@ -38,6 +38,9 @@ pub struct Config {
     pub enabled_tools: Option<HashSet<String>>,
     /// When true, write tools are not registered at all.
     pub read_only: bool,
+    /// When true, write tools stay registered but are described instead of
+    /// performed (D26). Orthogonal to `read_only`, which removes them.
+    pub dry_run: bool,
     /// Path of the JSONL audit log for write operations. `None` disables it.
     pub audit_log: Option<PathBuf>,
     /// How long reference data (projects, issue types, boards, spaces, field
@@ -83,9 +86,8 @@ impl Config {
             (!set.is_empty()).then_some(set)
         });
 
-        let read_only = env::var("READ_ONLY_MODE")
-            .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes"))
-            .unwrap_or(false);
+        let read_only = env_flag("READ_ONLY");
+        let dry_run = env_flag("DRY_RUN");
 
         let audit_log = env::var("AUDIT_LOG_FILE")
             .ok()
@@ -100,10 +102,24 @@ impl Config {
             confluence,
             enabled_tools,
             read_only,
+            dry_run,
             audit_log,
             cache_ttl,
         })
     }
+}
+
+/// Reads a boolean switch. Absent or unrecognized means off: a flag that
+/// weakens or changes behaviour should never be enabled by a typo.
+fn env_flag(name: &str) -> bool {
+    env::var(name).is_ok_and(|value| is_truthy(&value))
+}
+
+fn is_truthy(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "true" | "1" | "yes"
+    )
 }
 
 /// Parses `CACHE_TTL`, a number of seconds. Absent, empty or `0` all mean
@@ -195,8 +211,18 @@ impl ServiceConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_cache_ttl;
+    use super::{is_truthy, parse_cache_ttl};
     use std::time::Duration;
+
+    #[test]
+    fn a_flag_is_off_unless_it_is_explicitly_on() {
+        for on in ["true", "1", "yes", " TRUE ", "Yes"] {
+            assert!(is_truthy(on), "{on}");
+        }
+        for off in ["", "false", "0", "no", "ture", "on"] {
+            assert!(!is_truthy(off), "{off}");
+        }
+    }
 
     #[test]
     fn caching_is_off_unless_a_positive_ttl_is_given() {

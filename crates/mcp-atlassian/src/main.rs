@@ -21,6 +21,7 @@ async fn main() -> anyhow::Result<()> {
         jira = config.jira.is_some(),
         confluence = config.confluence.is_some(),
         read_only = config.read_only,
+        dry_run = config.dry_run,
         tools = server.tool_names().len(),
         "starting mcp-atlassian"
     );

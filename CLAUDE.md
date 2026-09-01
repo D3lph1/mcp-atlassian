@@ -46,7 +46,8 @@ optional — tools register only for configured services.
 | `CONFLUENCE_URL` / `CONFLUENCE_USERNAME` / `CONFLUENCE_API_TOKEN` / `CONFLUENCE_PERSONAL_TOKEN` | same scheme |
 | `ATLASSIAN_OAUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_REFRESH_TOKEN` / `_CLOUD_ID` | OAuth 2.0 (Cloud only); all four together, takes precedence over `*_URL` and configures both services (D17) |
 | `ENABLED_TOOLS` | comma-separated allowlist of tool names; empty = all |
-| `READ_ONLY_MODE` | `true` → only tools annotated `readOnlyHint` are registered; writes are absent from `tools/list` (D22) |
+| `READ_ONLY` | `true` → only tools annotated `readOnlyHint` are registered; writes are absent from `tools/list` (D22). Named `READ_ONLY`, not `READ_ONLY_MODE` as other servers spell it (D8) |
+| `DRY_RUN` | `true` → write tools stay listed but are validated and described instead of performed (D26). For demos and prompt rehearsal; reads still execute for real |
 | `AUDIT_LOG_FILE` | path to a JSONL audit log; every write call appends one record (D23). Unset = no auditing |
 | `CACHE_TTL` | seconds to cache reference data (projects, issue types, boards, spaces, fields); unset or `0` = no caching (D25) |
 | `TRANSPORT` | `stdio` (default) or `streamable-http` (needs `--features http`) |
@@ -79,6 +80,7 @@ crates/
     src/main.rs                  #   entry: config, transport (stdio / http)
     src/server.rs                #   composition, route filtering, ServerHandler
     src/audit.rs                 #   JSONL audit log of write calls (D23)
+    src/dry_run.rs               #   DRY_RUN: describe writes, do not run them (D26)
     src/router_ext.rs            #   projects product routers onto the server (D21)
 ```
 
@@ -121,8 +123,9 @@ is a plain REST library (D15).
   `outputSchema` (D20). Lists go through `ListResult<T>`, write operations
   through `StatusResult`; `structuredContent` must be an object, not an array.
 - Every tool must carry `annotations(read_only_hint = ...)`; write tools add
-  `destructive_hint`. That annotation is what `READ_ONLY_MODE` filters on, and
-  an unannotated tool is treated as a write (D22). Tests fail if it is missing.
+  `destructive_hint`. That annotation is what `READ_ONLY`, the audit log
+  and `DRY_RUN` all key off, and an unannotated tool is treated as a write
+  (D22). Tests fail if it is missing.
 - No new heavyweight deps without a DECISIONS.md entry; check binary size
   impact (`cargo bloat`) for anything non-trivial.
 - Tests never hit real Atlassian instances; use wiremock + fixtures (D14).
@@ -136,7 +139,7 @@ is a plain REST library (D15).
 1. ✅ Skeleton: config, auth, shared client, rmcp stdio server.
 2. ✅ Jira core tools (D9 list, 13 tools).
 3. ✅ Confluence core tools (11 tools) + markdown conversion.
-4. ✅ `ENABLED_TOOLS` / `READ_ONLY_MODE` (route filtering at startup),
+4. ✅ `ENABLED_TOOLS` / `READ_ONLY` (route filtering at startup),
    Dockerfile (musl + scratch), GitHub Actions CI.
 5. ✅ Deferred items (D11): streamable HTTP (`http` feature, D18), OAuth 2.0
    refresh-flow (D17), Jira agile API (4 tools), attachments (3 tools).
@@ -144,6 +147,10 @@ is a plain REST library (D15).
 
 Filtering lives in `AtlassianServer::new` — routes are pruned from the
 `ToolRouter` before serving (`#[tool_handler(router = self.tool_router)]`),
-so disabled tools never appear in `tools/list`. `AUDIT_LOG_FILE` then wraps
-the surviving write routes (`src/audit.rs`, D23): same `readOnlyHint` source
-of truth, so read tools are never logged and an unannotated one always is.
+so disabled tools never appear in `tools/list`. Two wrappers then compose over
+the survivors, in this order: `DRY_RUN` replaces write handlers with a
+description of the call (`src/dry_run.rs`, D26), and `AUDIT_LOG_FILE` wraps
+that (`src/audit.rs`, D23) so an intercepted call is still logged, marked
+`dry_run: true`. All three read the same `readOnlyHint` source of truth, so a
+tool cannot be read-only for one and a write for another, and an unannotated
+tool is always treated as a write.

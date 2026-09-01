@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::audit::{instrument_writes, AuditLog};
+use crate::dry_run::intercept_writes;
 use crate::router_ext::project_router;
 use atlassian_client::Config;
 use atlassian_confluence::{ConfluenceClient, ConfluenceTools};
@@ -76,7 +77,7 @@ impl AtlassianServer {
             });
         // A tool counts as read-only only if it says so through its MCP
         // annotation. Anything unannotated is treated as a write — a new tool
-        // cannot silently slip into READ_ONLY_MODE by omission.
+        // cannot silently slip into READ_ONLY by omission.
         let read_only_tools: std::collections::HashSet<String> = tool_router
             .list_all()
             .into_iter()
@@ -113,11 +114,28 @@ impl AtlassianServer {
             }
         }
 
+        // Dry run replaces the surviving write routes with a description of
+        // what they would have done (D26). It sits inside auditing, so an
+        // intercepted call is still logged — marked as a dry run.
+        let tool_router = if config.dry_run {
+            if config.read_only {
+                tracing::warn!(
+                    "DRY_RUN has nothing to intercept: READ_ONLY already removed \
+                     the write tools"
+                );
+            } else {
+                tracing::warn!("DRY_RUN is enabled: write tools are described, not performed");
+            }
+            intercept_writes(tool_router)
+        } else {
+            tool_router
+        };
+
         // Auditing wraps the surviving write routes, so a tool pruned above is
         // never logged — it cannot be called in the first place (D23).
         let tool_router = match &config.audit_log {
             Some(path) => {
-                let log = AuditLog::open(path).map_err(|e| {
+                let log = AuditLog::open(path, config.dry_run).map_err(|e| {
                     atlassian_client::Error::Config(format!(
                         "failed to open the audit log `{}`: {e}",
                         path.display()
@@ -221,7 +239,7 @@ impl ServerHandler for AtlassianServer {
     }
 
     /// Dispatches by URI scheme; each product parses the rest of the URI
-    /// itself. Resources are reads, so `READ_ONLY_MODE` does not touch them.
+    /// itself. Resources are reads, so `READ_ONLY` does not touch them.
     async fn read_resource(
         &self,
         request: ReadResourceRequestParams,

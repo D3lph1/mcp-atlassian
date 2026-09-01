@@ -28,6 +28,7 @@ fn config(mock: &MockServer) -> Config {
         confluence: Some(service(mock)),
         enabled_tools: None,
         read_only: false,
+        dry_run: false,
         audit_log: None,
         cache_ttl: None,
     }

@@ -42,9 +42,16 @@ binary for people who never use it.
 ## D8. Conventional environment variable names
 `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`, `JIRA_PERSONAL_TOKEN`,
 `CONFLUENCE_URL`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN`,
-`CONFLUENCE_PERSONAL_TOKEN`, `ENABLED_TOOLS`, `READ_ONLY_MODE`.
+`CONFLUENCE_PERSONAL_TOKEN`, `ENABLED_TOOLS`, `READ_ONLY`.
 These names are what existing Atlassian MCP servers use, so switching to this
 server is a change of the launch command, not of the client configuration.
+
+One deliberate divergence: the switch other servers spell `READ_ONLY_MODE` is
+`READ_ONLY` here, so the three behaviour switches read as a set — `READ_ONLY`,
+`DRY_RUN` (D26), `CACHE_TTL` (D25) — instead of one of them carrying a `_MODE`
+suffix the others do not. No alias: the rename landed before the first release,
+so there is no configuration in the world to keep working. Anyone porting a
+config from another server edits one variable name.
 
 ## D9. Full tool coverage (70), organized by domain
 The set started deliberately small and grew to cover the surface users
@@ -139,7 +146,7 @@ client, models and MCP tools:
 - `crates/storage-markdown` — storage XHTML ↔ Markdown (htmd/comrak). No
   Atlassian dependencies at all.
 - `crates/mcp-atlassian` (bin) — composes the product routers into one server:
-  configuration, route filtering (`ENABLED_TOOLS`, `READ_ONLY_MODE`),
+  configuration, route filtering (`ENABLED_TOOLS`, `READ_ONLY`),
   transports.
 
 The earlier layout put clients in product crates but tools in the server crate
@@ -250,8 +257,8 @@ is lost in translation. The alternative — one giant crate, or tools split from
 their clients — trades a ~50-line adapter for a structural problem in every
 future product.
 
-## D22. `READ_ONLY_MODE` is driven by tool annotations
-`READ_ONLY_MODE=true` registers only tools whose MCP annotation says
+## D22. `READ_ONLY` is driven by tool annotations
+`READ_ONLY=true` registers only tools whose MCP annotation says
 `readOnlyHint: true`. Everything else never reaches `tools/list`, so a client
 cannot call it — a blocked write is "tool not found", not a runtime refusal.
 
@@ -269,6 +276,9 @@ Guarding the guard: tests assert that every tool declares a hint, and
 cross-check each annotation against what the tool's name implies, so a
 mislabeled tool fails the suite rather than quietly widening read-only mode.
 
+The variable was named `READ_ONLY_MODE` until it acquired siblings; see D8 for
+why it diverges from the name other servers use.
+
 ## D23. Audit log: JSONL, driven by the same annotations as read-only mode
 `AUDIT_LOG_FILE=/path/audit.jsonl` appends one JSON object per **write** call:
 
@@ -276,7 +286,7 @@ mislabeled tool fails the suite rather than quietly widening read-only mode.
 {"ts":"2026-09-01T20:11:02.481Z","tool":"jira_delete_issue","args":{"issue_key":"PROJ-1"},"outcome":"ok","duration_ms":214,"destructive":true}
 ```
 
-What counts as a write is `readOnlyHint`, the annotation `READ_ONLY_MODE`
+What counts as a write is `readOnlyHint`, the annotation `READ_ONLY`
 already filters on (D22) — one source of truth, and the same fail-safe
 default: a tool that forgets the annotation is audited rather than silently
 skipped. `destructive` mirrors `destructiveHint` and is emitted only when
@@ -288,7 +298,7 @@ Three choices worth recording:
 - **Wrapping routes, not the handler.** The audit wrapper re-targets each
   write route through `ToolRoute::new_dyn`, the same mechanism `router_ext`
   uses (D21), and runs after route filtering — so a tool removed by
-  `ENABLED_TOOLS` or `READ_ONLY_MODE` never produces a record, because it
+  `ENABLED_TOOLS` or `READ_ONLY` never produces a record, because it
   cannot be called. The alternative, logging inside `ServerHandler::call_tool`,
   would need its own copy of the write/read decision.
 - **Arguments are logged verbatim, results are not.** The arguments are what
@@ -345,7 +355,7 @@ Two smaller decisions worth keeping:
   its service is configured *and* at least one of its tools survived filtering.
   Otherwise `ENABLED_TOOLS=confluence_search` would still leave `jira://` as a
   way to read Jira — an allowlist that only narrows half the surface is worse
-  than none. `READ_ONLY_MODE` needs no such rule: resources are reads.
+  than none. `READ_ONLY` needs no such rule: resources are reads.
 
 Both products keep their resource code next to their tools
 (`src/resources.rs`), and the server crate only dispatches on the scheme — the
@@ -386,3 +396,48 @@ Mechanics:
 
 The cache is plain `std` — no `moka`, no `dashmap`, no new dependency. The
 release binary grew by ~16 KB, from 3.734 MB to 3.750 MB.
+
+## D26. `DRY_RUN`: writes are described, not performed
+`DRY_RUN=true` keeps every write tool in `tools/list` but replaces its
+handler: the call is validated against the tool's own input schema and
+reported back, and nothing is sent to Atlassian. Reads still execute for
+real — a rehearsal against an empty instance answers no useful question.
+
+This is not a weaker `READ_ONLY` (D22); the two answer different
+questions. Read-only removes the write tools, which is right for an untrusted
+client and useless for rehearsing a prompt: a tool the model cannot see is a
+tool it cannot be observed choosing. Dry run leaves the surface intact so the
+model picks the tool, fills the arguments, and the operator sees what it
+*would* have done. Setting both is not an error — read-only wins, because the
+routes are already gone by the time the interception runs, and the server logs
+a warning saying so.
+
+The mode is disclosed, not hidden: the notice is appended to the description of
+every intercepted tool. A model that believes its writes landed will report
+them as done to the user, which is precisely the confusion the mode exists to
+prevent.
+
+Mechanics:
+
+- One wrapper over the `ToolRouter` (`src/dry_run.rs`), same shape as the
+  audit wrapper (D23) and driven by the same `readOnlyHint` source of truth
+  (D22) — so a tool cannot be intercepted by one and executed by the other,
+  and an unannotated tool is intercepted rather than silently performed. No
+  product crate and no tool implementation changes.
+- Order in `AtlassianServer::new`: prune → intercept → audit. Auditing sits
+  outside, so an intercepted call is still recorded, with `dry_run: true` on
+  the record. A log claiming writes that never left the process would be worse
+  than no log.
+- The result is a `DryRunReport` (`dry_run`, `tool`, `destructive`,
+  `arguments`, `warnings`), and the route's `outputSchema` is swapped for that
+  report's. Every tool still advertises one (D20), and it still describes what
+  the client actually receives.
+- Validation is deliberately shallow — required arguments present, and a
+  warning for arguments the schema does not declare (serde would have dropped
+  them silently, which is the mistake worth catching). A missing required
+  argument is an error, because the real call would have failed to deserialize
+  its parameters too. Types and values are the tool's business; re-checking
+  them here would mean a second copy of every schema, free to drift.
+
+No new dependency; the release binary grew by 112 bytes, from 3 932 512 to
+3 932 624.
