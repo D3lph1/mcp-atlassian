@@ -15,13 +15,16 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
 - Transports: stdio (default), streamable HTTP behind the `http` feature (D18)
 - Filtering: `ENABLED_TOOLS`; `READ_ONLY_MODE` driven by tool annotations
   (40 read-only / 30 write, 14 of them destructive) — D22
+- Audit log: `AUDIT_LOG_FILE` appends one JSONL record per write call —
+  timestamp, tool, arguments, outcome, duration, `destructive` flag (D23)
 - Markdown ↔ Confluence storage (htmd/comrak, D10)
 - Structured output: every tool advertises an `outputSchema` and returns
   `structuredContent` (D20)
-- Tests: 68 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
+- Tests: 74 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
   docker); scratch Dockerfile
 - Binary: 3.6 MB stdio / 3.9 MB with http; idle RSS ~2 MB (target < 30 MB —
-  comfortably under)
+  comfortably under). The audit log added ~16 KB (chrono was already in the
+  tree via rmcp)
 
 Deliberately not done: SSE transport (deprecated in MCP), multi-user proxy.
 
@@ -50,7 +53,7 @@ Known loose ends:
       just wiring the elicitation round-trip.
 
 ### Security / operations
-- [ ] Audit log of write operations (JSONL to a file)
+- [x] Audit log of write operations (JSONL to a file) — `AUDIT_LOG_FILE`, D23
 - [ ] Multi-instance (two Jiras) — needs a TOML config instead of env vars,
       plus tool prefixes
 
@@ -81,7 +84,7 @@ sprints, and include filter arguments in the cache key.
 
 ## Key files
 
-- `DECISIONS.md` — 19 architecture decisions (D1–D19); read before structural
+- `DECISIONS.md` — 23 architecture decisions (D1–D23); read before structural
   changes
 - `CLAUDE.md` — commands, layout, conventions, env vars, roadmap
 - `crates/atlassian-{jira,confluence}/src/tools/` — tools, next to the

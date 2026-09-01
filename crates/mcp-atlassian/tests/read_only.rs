@@ -24,6 +24,7 @@ fn config(read_only: bool) -> Config {
         confluence: Some(service()),
         enabled_tools: None,
         read_only,
+        audit_log: None,
     }
 }
 

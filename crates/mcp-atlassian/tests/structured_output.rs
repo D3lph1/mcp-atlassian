@@ -22,6 +22,7 @@ fn config(mock: &MockServer) -> Config {
         confluence: None,
         enabled_tools: None,
         read_only: false,
+        audit_log: None,
     }
 }
 

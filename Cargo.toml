@@ -32,6 +32,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rmcp = { version = "3", features = ["server", "transport-io"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 schemars = "1"
+# Already in the tree via rmcp with the same features — timestamps only (D23).
+chrono = { version = "0.4", default-features = false, features = ["now"] }
 wiremock = "0.6"
 
 [workspace.lints.rust]

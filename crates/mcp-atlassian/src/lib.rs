@@ -6,5 +6,6 @@
 //! composes them into one server. See [`router_ext`] for how routers defined
 //! over a product's own state are re-targeted onto [`server::AtlassianServer`].
 
+pub mod audit;
 pub mod router_ext;
 pub mod server;

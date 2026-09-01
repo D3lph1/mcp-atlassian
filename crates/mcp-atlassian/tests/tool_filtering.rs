@@ -32,6 +32,7 @@ fn full_config() -> Config {
         confluence: Some(confluence_config()),
         enabled_tools: None,
         read_only: false,
+        audit_log: None,
     }
 }
 

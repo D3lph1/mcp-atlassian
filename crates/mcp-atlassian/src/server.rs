@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::audit::{instrument_writes, AuditLog};
 use crate::router_ext::project_router;
 use atlassian_client::Config;
 use atlassian_confluence::{ConfluenceClient, ConfluenceTools};
@@ -92,6 +93,22 @@ impl AtlassianServer {
                 }
             }
         }
+
+        // Auditing wraps the surviving write routes, so a tool pruned above is
+        // never logged — it cannot be called in the first place (D23).
+        let tool_router = match &config.audit_log {
+            Some(path) => {
+                let log = AuditLog::open(path).map_err(|e| {
+                    atlassian_client::Error::Config(format!(
+                        "failed to open the audit log `{}`: {e}",
+                        path.display()
+                    ))
+                })?;
+                tracing::info!(path = %path.display(), "auditing write operations");
+                instrument_writes(tool_router, log)
+            }
+            None => tool_router,
+        };
 
         Ok(Self {
             jira,

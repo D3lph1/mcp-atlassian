@@ -47,6 +47,7 @@ optional — tools register only for configured services.
 | `ATLASSIAN_OAUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_REFRESH_TOKEN` / `_CLOUD_ID` | OAuth 2.0 (Cloud only); all four together, takes precedence over `*_URL` and configures both services (D17) |
 | `ENABLED_TOOLS` | comma-separated allowlist of tool names; empty = all |
 | `READ_ONLY_MODE` | `true` → only tools annotated `readOnlyHint` are registered; writes are absent from `tools/list` (D22) |
+| `AUDIT_LOG_FILE` | path to a JSONL audit log; every write call appends one record (D23). Unset = no auditing |
 | `TRANSPORT` | `stdio` (default) or `streamable-http` (needs `--features http`) |
 | `HOST` / `PORT` / `ALLOWED_HOSTS` | HTTP transport bind address (127.0.0.1:8000) and extra Host-header allowlist (D18) |
 
@@ -73,6 +74,7 @@ crates/
   mcp-atlassian/                 # the server; contains no product knowledge
     src/main.rs                  #   entry: config, transport (stdio / http)
     src/server.rs                #   composition, route filtering, ServerHandler
+    src/audit.rs                 #   JSONL audit log of write calls (D23)
     src/router_ext.rs            #   projects product routers onto the server (D21)
 ```
 
@@ -129,4 +131,6 @@ is a plain REST library (D15).
 
 Filtering lives in `AtlassianServer::new` — routes are pruned from the
 `ToolRouter` before serving (`#[tool_handler(router = self.tool_router)]`),
-so disabled tools never appear in `tools/list`.
+so disabled tools never appear in `tools/list`. `AUDIT_LOG_FILE` then wraps
+the surviving write routes (`src/audit.rs`, D23): same `readOnlyHint` source
+of truth, so read tools are never logged and an unannotated one always is.

@@ -28,6 +28,7 @@ atlassian-jira = { workspace = true, features = ["mcp"] }
 atlassian-confluence = { workspace = true, features = ["mcp"] }
 storage-markdown.workspace = true
 anyhow.workspace = true
+chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "io-std", "signal", "fs"] }

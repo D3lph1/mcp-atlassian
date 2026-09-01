@@ -268,3 +268,50 @@ deserve a confirmation prompt, independent of this mode.
 Guarding the guard: tests assert that every tool declares a hint, and
 cross-check each annotation against what the tool's name implies, so a
 mislabeled tool fails the suite rather than quietly widening read-only mode.
+## D23. Audit log: JSONL, driven by the same annotations as read-only mode
+`AUDIT_LOG_FILE=/path/audit.jsonl` appends one JSON object per **write** call:
+
+```json
+{"ts":"2026-09-01T20:11:02.481Z","tool":"jira_delete_issue","args":{"issue_key":"PROJ-1"},"outcome":"ok","duration_ms":214,"destructive":true}
+```
+
+What counts as a write is `readOnlyHint`, the annotation `READ_ONLY_MODE`
+already filters on (D22) — one source of truth, and the same fail-safe
+default: a tool that forgets the annotation is audited rather than silently
+skipped. `destructive` mirrors `destructiveHint` and is emitted only when
+true, so the deletes and status changes are greppable without a JSON parser.
+Reads are not logged: they are the bulk of the traffic and change nothing.
+
+Three choices worth recording:
+
+- **Wrapping routes, not the handler.** The audit wrapper re-targets each
+  write route through `ToolRoute::new_dyn`, the same mechanism `router_ext`
+  uses (D21), and runs after route filtering — so a tool removed by
+  `ENABLED_TOOLS` or `READ_ONLY_MODE` never produces a record, because it
+  cannot be called. The alternative, logging inside `ServerHandler::call_tool`,
+  would need its own copy of the write/read decision.
+- **Arguments are logged verbatim, results are not.** The arguments are what
+  an operator needs to reconstruct or undo an action; a full response would
+  multiply the log size with data already in Jira. Only the outcome (`ok` /
+  `error` plus the message) and the duration are kept. Note that the arguments
+  contain whatever text the client sent — comment bodies, page content — so
+  the log deserves the same file permissions as a backup.
+- **A failed append does not fail the call.** It is reported at ERROR level
+  and dropped. Killing writes because a disk filled is worse than a visible
+  gap in the log for a single-tenant server; a deployment that needs the
+  stricter guarantee should ship the file off-host.
+
+The record is written before the response is returned, so a client that saw a
+result knows the record exists. Writes are one `write_all` per line into a
+file opened `O_APPEND`, serialized by a mutex — concurrent calls cannot
+interleave halves of a line, and nothing blocks on the log except the call
+being logged.
+
+The one new dependency, `chrono` (timestamps), was already in the tree via
+rmcp with the same feature set (`default-features = false, features =
+["now"]`), so it costs no extra crate: the release binary grew from 3.703 MB
+to 3.719 MB.
+
+Not covered: there is no user identity in the record, because the server
+authenticates as exactly one Atlassian account (D6/D17) — the account is a
+property of the process, not of the call.

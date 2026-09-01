@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::env;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::error::{Error, Result};
@@ -36,6 +37,8 @@ pub struct Config {
     pub enabled_tools: Option<HashSet<String>>,
     /// When true, write tools are not registered at all.
     pub read_only: bool,
+    /// Path of the JSONL audit log for write operations. `None` disables it.
+    pub audit_log: Option<PathBuf>,
 }
 
 impl Config {
@@ -80,11 +83,18 @@ impl Config {
             .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes"))
             .unwrap_or(false);
 
+        let audit_log = env::var("AUDIT_LOG_FILE")
+            .ok()
+            .map(|raw| raw.trim().to_string())
+            .filter(|raw| !raw.is_empty())
+            .map(PathBuf::from);
+
         Ok(Self {
             jira,
             confluence,
             enabled_tools,
             read_only,
+            audit_log,
         })
     }
 }
