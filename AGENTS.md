@@ -54,9 +54,13 @@ identical to the CI one.
 All five crates are published on crates.io under the `mcp-atlassian-`
 prefix (D15). Each keeps its own `README.md` and `LICENSE` inside its
 directory — cargo packages nothing from outside one, so the root copies do
-not travel. Publishing is `cargo publish --workspace`, which orders the
-crates itself; bump `version` in the root `Cargo.toml` first, since all
-five share it.
+not travel.
+
+Releasing is: bump `version` in the root `Cargo.toml` (all five share it),
+commit, tag `vX.Y.Z`, push. CI does the rest — binaries, the GHCR image,
+the GitHub release, then `cargo publish --workspace` (D45). A `version` job
+fails the tag if the manifest and the tag disagree, so the two never drift.
+Publishing needs `CARGO_REGISTRY_TOKEN` in the repository secrets.
 
 Release build (size-optimized, see profile in Cargo.toml):
 

@@ -10,6 +10,29 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # The binary takes its version from the manifest and the image tags take
+  # theirs from the git tag, so a tag pushed without bumping Cargo.toml would
+  # publish `:0.2.0` around a binary that answers 0.1.1 — green, and wrong.
+  # Runs on every event so that jobs which need it are not skipped along with
+  # it; the comparison itself only happens for a tag.
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: The manifest version matches the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          manifest=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "mcp-atlassian") | .version')
+          tag="${GITHUB_REF_NAME#v}"
+          echo "manifest: $manifest, tag: $tag"
+          if [[ "$manifest" != "$tag" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml $manifest;" \
+                 "bump the version in the root manifest and move the tag"
+            exit 1
+          fi
+
   # Format, lint and tests on the host toolchain; everything else assumes
   # this is green.
   check:
@@ -123,7 +146,7 @@ jobs:
   # and a fork's token cannot write packages.
   image:
     if: github.event_name == 'push'
-    needs: build
+    needs: [build, version]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -172,7 +195,7 @@ jobs:
   # A `v*` tag turns the five binaries into a GitHub release.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, coverage, deny]
+    needs: [build, coverage, deny, version]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -188,3 +211,24 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
+  # crates.io, last and on purpose. A GitHub release can be deleted and a
+  # container tag can be overwritten; a published version can only be yanked,
+  # which hides it from the resolver and leaves the file downloadable for
+  # good. So everything reversible happens first, and this runs only if all
+  # of it succeeded.
+  #
+  # `--workspace` orders the five crates itself and waits for each to appear
+  # in the index before publishing what depends on it. Re-running a tag fails
+  # here — the version already exists — and that is the correct outcome.
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish to crates.io
+        run: cargo publish --workspace --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

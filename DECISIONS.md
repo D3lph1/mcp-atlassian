@@ -1027,6 +1027,23 @@ image) and macOS, and `x86_64` for Windows, all with the `http` feature. A
 cross-compiles with `taiki-e/setup-cross-toolchain-action`; macOS builds
 both targets on the arm64 runner, which Apple's toolchain supports.
 
+A tag also publishes the five crates to crates.io, and the job order is the
+point: `release` first, `publish` after it and only if it succeeded. A GitHub
+release can be deleted and a container tag can be overwritten, but a published
+version can only be yanked — hidden from the resolver, still downloadable
+forever. Everything reversible therefore happens before the one thing that is
+not. `cargo publish --workspace` orders the crates itself and waits for each to
+reach the index; the registry token lives in `CARGO_REGISTRY_TOKEN`.
+
+Guarding both is a `version` job: on a tag it compares `Cargo.toml` against
+`GITHUB_REF_NAME` and fails if they differ. Without it the two halves of a
+release drift silently — the binary takes its version from the manifest, while
+the image tags and the release name come from the git tag, so a tag pushed
+without bumping the manifest would publish `:0.2.0` around a binary that
+answers 0.1.1, with every job green. The job runs on every event rather than
+only on tags, because a skipped job skips everything that needs it, and
+`image` needs it on master too; the comparison itself is behind an `if`.
+
 Coverage goes to Coveralls, which accepts the workflow's own `GITHUB_TOKEN`
 for a public repository — no secret to manage, one badge in the README next
 to the CI status. The 85% floor stays in the same step, so a drop fails the
