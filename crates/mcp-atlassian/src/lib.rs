@@ -8,6 +8,7 @@
 
 pub mod audit;
 pub mod banner;
+pub mod catalogue;
 pub mod confirm;
 pub mod dry_run;
 #[cfg(feature = "http")]

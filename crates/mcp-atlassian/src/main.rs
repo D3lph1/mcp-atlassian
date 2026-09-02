@@ -7,7 +7,10 @@ use tracing_subscriber::{filter::Targets, prelude::*};
 const USAGE: &str = "\
 mcp-atlassian — MCP server for Jira and Confluence
 
-Usage: mcp-atlassian [--version | --help]
+Usage: mcp-atlassian [--version | --help | --list-tools]
+
+  --list-tools  print every tool this build offers and exit; needs no
+                configuration, and ignores ENABLED_TOOLS and READ_ONLY
 
 Configured entirely through environment variables (JIRA_URL, JIRA_API_TOKEN,
 CONFLUENCE_URL, READ_ONLY, DRY_RUN, ENABLED_TOOLS, TRANSPORT, …); see
@@ -26,6 +29,13 @@ async fn main() -> anyhow::Result<()> {
             }
             "--help" | "-h" => {
                 println!("{USAGE}");
+                return Ok(());
+            }
+            // Deliberately before the configuration is read: someone deciding
+            // whether to install this should not need an API token to see
+            // what it offers.
+            "--list-tools" => {
+                print!("{}", mcp_atlassian::catalogue::render());
                 return Ok(());
             }
             other => anyhow::bail!("unknown argument `{other}`; try --help"),

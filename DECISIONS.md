@@ -1069,9 +1069,18 @@ to the CI status. The 85% floor stays in the same step, so a drop fails the
 build before it reaches the badge. Codecov was the alternative and now needs
 a token for every upload.
 
-`--version` and `--help` are the only flags; everything else is the
-environment (D8). No clap: two string matches before the configuration is
-read, so they work on an unconfigured machine.
+`--version`, `--help` and `--list-tools` are the only flags; everything else
+is the environment (D8). No clap: three string matches before the
+configuration is read, so they work on an unconfigured machine.
+
+`--list-tools` exists because deciding whether to install this should not
+require producing an API token first. It reads the catalogue from the
+routers' own metadata, which exists before any client does, and prints every
+tool the build has — not what a given configuration would register. That is
+the opposite end from the startup log, which reports what survived
+`READ_ONLY` and `ENABLED_TOOLS` (D29): one says what there is, the other what
+is on. The listed kind comes from the same annotation those switches read
+(D22), so a tool cannot read as read-only here and act as a write there.
 
 ## D46. Scope, status and what is left
 The status and backlog used to live in two handoff files; they were folded
@@ -1111,7 +1120,6 @@ on writes: no write tool changes anything the cache holds. A CHANGELOG:
 release notes are generated from commits.
 
 **Open, in rough order of value.**
-- `--list-tools`, so a user can see the surface without configuring.
 - A `jira_release_notes` prompt (fixVersion → grouped summaries).
 - JSM (Service Management) requests and queues; Jira `move_issue` across
   projects (Cloud's async task API needs polling); Confluence page

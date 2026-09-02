@@ -69,6 +69,10 @@ The switches worth knowing:
 
 The full list is in [AGENTS.md](AGENTS.md).
 
+`mcp-atlassian --list-tools` prints the whole catalogue — 70 tools with what
+each one changes — and needs no configuration, so you can see what you would
+be installing before setting up a token.
+
 ## What the model gets
 
 - **Tools** — Jira: search (JQL), issues, transitions, comments, worklog,
