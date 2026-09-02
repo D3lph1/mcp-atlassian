@@ -34,8 +34,8 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
   its newest comments, then asks for a plan (D30)
 - TTL cache: `CACHE_TTL` seconds, reference data only (projects, issue types,
   boards, link types, fields, spaces), off by default (D25)
-- Tests: 170 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
-  docker); scratch Dockerfile
+- Tests: 172 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
+  docker, coverage gate); scratch Dockerfile
 - Binary: 3.6 MB stdio / 3.9 MB with http; idle RSS ~2 MB (target < 30 MB —
   comfortably under). The audit log added ~16 KB (chrono was already in the
   tree via rmcp), resources ~15 KB, the TTL cache ~16 KB, dry run 112 bytes,
@@ -99,6 +99,12 @@ duplications came out with them: `cached()` and the attachment file helpers.
 Nothing else in the sweep needed changing — cache discipline (D25), resource
 URI validation, OAuth refresh serialization and error wording all held.
 
+**Coverage (D32).** 84% by line (`cargo llvm-cov`), gated in CI at 80%. The
+tool wrappers were 14% before `tests/every_tool.rs` — two schema-driven
+invariants over `tools/list` rather than 70 per-tool tests. Add invariants
+there, not cases; a per-tool test has to be remembered, an enumeration does
+not.
+
 **Config in a file: not doing (D28).** An MCP stdio server is launched by its
 client from a config file that already exists and is not ours. A second one
 splits settings across two places, adds a precedence matrix, and forces every
@@ -128,7 +134,7 @@ on writes — a `create_project` through this server still waits out the TTL.
 
 ## Key files
 
-- `DECISIONS.md` — 31 architecture decisions (D1–D31); read before structural
+- `DECISIONS.md` — 32 architecture decisions (D1–D32); read before structural
   changes
 - `CLAUDE.md` — commands, layout, conventions, env vars, roadmap
 - `crates/atlassian-{jira,confluence}/src/tools/` — tools, next to the

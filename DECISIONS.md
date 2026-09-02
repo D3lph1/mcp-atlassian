@@ -644,3 +644,42 @@ N+1st is how it happens. Two shared helpers came out of the same review for
 the same reason — `cached()` (duplicated verbatim in both product clients) and
 `save_attachment` / `read_for_upload` (the halves of the attachment tools that
 were not product-specific).
+
+## D32. Test the tool layer with invariants, not with 70 tests
+A coverage run put the tool wrappers at **13.9%** while the clients sat at 76%
+and the server composition at 84%. The tests hit both ends and skipped the
+middle: wiremock tests exercise the clients directly, end-to-end tests exercise
+filtering, auditing and dry run through a handful of tools, and the 70 thin
+wrappers in between — parse arguments, call the client, wrap the result — were
+covered by neither.
+
+That gap is where all three defects of D31 lived, and the reason is worth
+naming: each wrapper is too trivial to look worth testing, yet the wrappers are
+exactly where the decisions live that no compiler checks — which annotation,
+which default page size, which endpoint path. Trivial code holding unverifiable
+decisions is not low risk; it is low *visible* risk.
+
+The answer is not 70 tests that must each be remembered when a tool is added.
+It is two tests that enumerate `tools/list` and hold for whatever they find
+(`tests/every_tool.rs`), joining the annotation and output-schema checks that
+already worked this way:
+
+- **every tool reaches the API with a well-formed path** — arguments are
+  fabricated from each tool's own input schema, and the request it issues must
+  exist and have no unsubstituted `format!` placeholder, no empty segment and
+  no `..`. A tool that issues nothing is not wired to its client.
+- **no tool passes an uncapped page size** — every tool that takes a `limit`
+  is asked for 100000, and what reaches the wire must be ≤ 50. This is the
+  D31 defect turned into something that cannot recur.
+
+The mock answers `{}`, so most calls end in a deserialization error. That is
+deliberate: the request is under test, not the response. Both tests found
+something on their first run — an argument fabricator that built the wrong
+array element type, and `confluence_download_attachment`'s internal
+`limit=200`, which is a constant the tool chose rather than a caller's page
+size, and is now excluded on that basis rather than by name.
+
+Coverage went 62.6% → 83.0% by line, tool wrappers 13.9% → 72.4%, for two
+tests. CI now fails under 80% (`cargo llvm-cov --fail-under-lines`). The floor
+is a ratchet: raise it when the number rises, never lower it to make a red
+build green.

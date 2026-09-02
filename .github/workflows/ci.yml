@@ -24,6 +24,21 @@ jobs:
       - name: Test
         run: cargo test --all-features
 
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      # The floor is a ratchet, not a target: it exists so a drop is a failing
+      # build rather than something noticed months later. Raise it when the
+      # real number moves up; never lower it to make a red build green.
+      - name: Coverage
+        run: cargo llvm-cov --all-features --workspace --summary-only --fail-under-lines 80
+
   musl-build:
     runs-on: ubuntu-latest
     steps:

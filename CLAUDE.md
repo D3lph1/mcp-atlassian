@@ -148,6 +148,9 @@ is a plain REST library (D15).
 - Values interpolated into an endpoint path are checked once, in
   `AtlassianClient::request`; do not re-implement that per call site (D31).
 - Tests never hit real Atlassian instances; use wiremock + fixtures (D14).
+- A rule that must hold for every tool goes in `tests/every_tool.rs` as an
+  enumeration over `tools/list`, not as one test per tool (D32). CI fails
+  under 80% line coverage.
 - Caching is opt-in and for reference data only (D25). A new client method
   that returns issues, page bodies or anything a user edits must not go
   through `cached(...)`; if it takes narrowing arguments, they belong in the
