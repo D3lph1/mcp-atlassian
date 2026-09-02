@@ -42,10 +42,12 @@ optional — tools register only for configured services.
 |---|---|
 | `JIRA_URL` | e.g. `https://company.atlassian.net` (Cloud) or self-hosted URL |
 | `JIRA_USERNAME` + `JIRA_API_TOKEN` | Cloud auth (Basic) |
+| `*_FILE` on any token var | read the secret from that path instead of the environment — `JIRA_API_TOKEN_FILE=/run/secrets/jira`; Docker/Kubernetes secrets convention (D28). Setting both spellings is an error |
 | `JIRA_PERSONAL_TOKEN` | Server/DC auth (Bearer PAT); presence switches mode |
 | `CONFLUENCE_URL` / `CONFLUENCE_USERNAME` / `CONFLUENCE_API_TOKEN` / `CONFLUENCE_PERSONAL_TOKEN` | same scheme |
 | `ATLASSIAN_OAUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_REFRESH_TOKEN` / `_CLOUD_ID` | OAuth 2.0 (Cloud only); all four together, takes precedence over `*_URL` and configures both services (D17) |
-| `ENABLED_TOOLS` | comma-separated allowlist of tool names; empty = all |
+| `ENABLED_TOOLS` | comma-separated allowlist of tool-name patterns; `*` matches any run of characters anywhere (`jira_*`, `*_get_*`, `*_attachment*`); no `*` = exact name; empty = all (D27) |
+| `DISABLED_TOOLS` | same syntax, subtracted from what `ENABLED_TOOLS` allows; deny wins (`ENABLED_TOOLS=jira_*` + `DISABLED_TOOLS=*_delete_*`) (D27) |
 | `READ_ONLY` | `true` → only tools annotated `readOnlyHint` are registered; writes are absent from `tools/list` (D22). Named `READ_ONLY`, not `READ_ONLY_MODE` as other servers spell it (D8) |
 | `DRY_RUN` | `true` → write tools stay listed but are validated and described instead of performed (D26). For demos and prompt rehearsal; reads still execute for real |
 | `AUDIT_LOG_FILE` | path to a JSONL audit log; every write call appends one record (D23). Unset = no auditing |
@@ -59,7 +61,8 @@ optional — tools register only for configured services.
 Cargo.toml                       # workspace root: [workspace.dependencies], [workspace.lints]
 crates/
   atlassian-client/              # shared HTTP: env config, auth, retries, error
-                                 #   mapping, opt-in TTL cache (D25); `mcp`
+                                 #   mapping, opt-in TTL cache (D25),
+                                 #   ENABLED_TOOLS wildcards (D27); `mcp`
                                  #   feature adds ListResult / StatusResult
                                  #   used by both products
   storage-markdown/              # storage-XHTML <-> Markdown (htmd / comrak),

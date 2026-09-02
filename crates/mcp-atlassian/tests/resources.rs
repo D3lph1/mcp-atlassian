@@ -1,9 +1,7 @@
 //! MCP resources: `jira://ISSUE-KEY` and `confluence://PAGE_ID`, end to end
 //! over an in-memory transport.
 
-use std::collections::HashSet;
-
-use atlassian_client::{Auth, Config, ServiceConfig};
+use atlassian_client::{Auth, Config, ServiceConfig, ToolFilter};
 use mcp_atlassian::server::AtlassianServer;
 use rmcp::model::{ReadResourceRequestParams, ResourceContents};
 use rmcp::service::RunningService;
@@ -27,6 +25,7 @@ fn config(mock: &MockServer) -> Config {
         jira: Some(service(mock)),
         confluence: Some(service(mock)),
         enabled_tools: None,
+        disabled_tools: None,
         read_only: false,
         dry_run: false,
         audit_log: None,
@@ -217,7 +216,8 @@ async fn resources_follow_the_tool_allowlist() {
     // otherwise resources would be a way around the allowlist.
     let mock = MockServer::start().await;
     let client = connect(Config {
-        enabled_tools: Some(HashSet::from(["confluence_search".to_string()])),
+        enabled_tools: ToolFilter::parse("confluence_search"),
+        disabled_tools: None,
         ..config(&mock)
     })
     .await;

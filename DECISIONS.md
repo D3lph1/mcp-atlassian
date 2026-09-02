@@ -441,3 +441,80 @@ Mechanics:
 
 No new dependency; the release binary grew by 112 bytes, from 3 932 512 to
 3 932 624.
+
+## D27. Tool selection: `ENABLED_TOOLS` / `DISABLED_TOOLS`, matched by wildcard
+Entries of either list may contain `*`, standing for any run of characters
+including none, anywhere in the pattern: `jira_*` is a whole product,
+`*_get_*` a verb across both, `*_attachment*` one noun, `*` everything. A
+pattern without `*` is still an exact name, so a list written before this
+change means what it always did.
+
+`DISABLED_TOOLS` is subtracted from whatever `ENABLED_TOOLS` let through, and
+the subtraction wins: a tool named by both is removed. The alternative —
+letting a more specific allow beat a broader deny — would make the pair depend
+on which variable the reader looked at first. Deny-wins is the rule every
+firewall, `.gitignore` and IAM policy already trained people on.
+
+The two compose into the shape most operators actually want, which neither
+expresses alone: `ENABLED_TOOLS=jira_*` plus `DISABLED_TOOLS=*_delete_*` is
+"all of Jira except the deletes". Without a denylist that is 38 names pasted
+by hand. `DISABLED_TOOLS` alone (no allowlist) is the other common shape —
+everything except one product, or except one risky verb.
+
+`READ_ONLY` is orthogonal and applies on top: it removes writes whatever the
+two lists say. If the three between them leave nothing registered, the server
+logs a warning — an empty `tools/list` is otherwise indistinguishable from a
+broken build.
+
+With 70 tools, the exact-names-only form was the one place the environment
+genuinely hurt: narrowing the server to Jira reads meant pasting 20 names into
+a JSON string in the client's config, and re-pasting them whenever the tool set
+moved. Every such list was really a pattern written out longhand.
+
+Not a glob library, and not `glob`/`globset` as a dependency: no `?`, no
+`[a-z]`, no `{a,b}`, no escaping. Tool names are a flat set of lowercase
+`product_verb_noun` identifiers; `*` alone covers every slice anyone has
+wanted, and the matcher is 15 lines (`atlassian-client/src/tool_filter.rs`).
+Segments between wildcards are matched greedily left to right, which is exact
+for this grammar — with no backtracking constructs, the leftmost occurrence of
+a segment never rules out a match a later one would have allowed. The suffix
+is checked against what is left after the middles, so `jira*jira` does not
+match `jira`.
+
+A pattern that matches no registered tool is logged at WARN on startup. That
+warning matters more with wildcards than it did with names: a typo in a
+pattern enables nothing and looks exactly like a deliberately narrow filter.
+
+## D28. Secrets may be read from files (`*_FILE`)
+Every credential variable has a companion: `JIRA_API_TOKEN_FILE`,
+`JIRA_PERSONAL_TOKEN_FILE`, `CONFLUENCE_API_TOKEN_FILE`,
+`CONFLUENCE_PERSONAL_TOKEN_FILE`, `ATLASSIAN_OAUTH_CLIENT_SECRET_FILE`,
+`ATLASSIAN_OAUTH_REFRESH_TOKEN_FILE`. Set one and the token is read from that
+path instead of from the environment. The client id and cloud id have no
+`_FILE` form — they are identifiers, not secrets.
+
+This is the convention Docker and Kubernetes secrets already expect, so it
+composes with `docker run --secret` and a mounted `Secret` without a wrapper
+script. It is also the only way to keep a token out of the MCP client's config
+JSON, which is a plaintext file in the user's home directory, and out of
+`docker inspect` and `/proc/<pid>/environ`.
+
+Rules, all of them because credentials are the wrong place to be clever:
+
+- Both spellings set at once is an error naming both, not a precedence rule.
+- The file's contents are trimmed. `echo secret > file` leaves a newline, and
+  a token carrying one fails authentication with nothing in the message to
+  suggest why.
+- An empty or unreadable file is an error that names the variable and the
+  path (D13), not a silently absent credential.
+
+This closes the strongest argument for a TOML config file, which was
+considered and rejected here. An MCP stdio server is launched by its client
+from a config file that already exists and is not ours; a second one would
+split the settings across two places, add a precedence matrix, force every
+error message to know which source a value came from, and give up the D8
+promise that switching servers is a change of the launch command. The one
+thing the environment genuinely cannot express is several instances of the
+same product (two Jiras), because the variable names are a flat namespace —
+if that lands, the file arrives with it, as part of that feature rather than
+as a second spelling of this one.

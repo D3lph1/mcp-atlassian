@@ -26,6 +26,7 @@ fn config(mock: &MockServer, dry_run: bool, audit_log: Option<PathBuf>) -> Confi
         }),
         confluence: None,
         enabled_tools: None,
+        disabled_tools: None,
         read_only: false,
         dry_run,
         audit_log,

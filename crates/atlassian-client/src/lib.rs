@@ -12,8 +12,10 @@ mod config;
 mod error;
 mod http;
 pub mod oauth;
+mod tool_filter;
 
 pub use cache::TtlCache;
 pub use config::{Auth, Config, ServiceConfig};
 pub use error::{Error, Result};
 pub use http::AtlassianClient;
+pub use tool_filter::ToolFilter;

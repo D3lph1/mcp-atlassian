@@ -21,6 +21,7 @@ fn config(mock: &MockServer) -> Config {
         }),
         confluence: None,
         enabled_tools: None,
+        disabled_tools: None,
         read_only: false,
         dry_run: false,
         audit_log: None,

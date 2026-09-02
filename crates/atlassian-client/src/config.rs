@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -6,6 +5,7 @@ use std::time::Duration;
 
 use crate::error::{Error, Result};
 use crate::oauth::{OAuthConfig, OAuthSession, DEFAULT_TOKEN_URL};
+use crate::tool_filter::ToolFilter;
 
 /// How to authenticate against an Atlassian instance.
 #[derive(Debug, Clone)]
@@ -34,8 +34,11 @@ pub struct ServiceConfig {
 pub struct Config {
     pub jira: Option<ServiceConfig>,
     pub confluence: Option<ServiceConfig>,
-    /// Allowlist of tool names. `None` means all tools are enabled.
-    pub enabled_tools: Option<HashSet<String>>,
+    /// Allowlist of tool-name patterns. `None` means all tools are enabled.
+    pub enabled_tools: Option<ToolFilter>,
+    /// Denylist of tool-name patterns, subtracted from whatever the allowlist
+    /// let through. `None` means nothing is subtracted (D27).
+    pub disabled_tools: Option<ToolFilter>,
     /// When true, write tools are not registered at all.
     pub read_only: bool,
     /// When true, write tools stay registered but are described instead of
@@ -77,14 +80,12 @@ impl Config {
             ));
         }
 
-        let enabled_tools = env::var("ENABLED_TOOLS").ok().and_then(|raw| {
-            let set: HashSet<String> = raw
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            (!set.is_empty()).then_some(set)
-        });
+        let enabled_tools = env::var("ENABLED_TOOLS")
+            .ok()
+            .and_then(|raw| ToolFilter::parse(&raw));
+        let disabled_tools = env::var("DISABLED_TOOLS")
+            .ok()
+            .and_then(|raw| ToolFilter::parse(&raw));
 
         let read_only = env_flag("READ_ONLY");
         let dry_run = env_flag("DRY_RUN");
@@ -101,12 +102,48 @@ impl Config {
             jira,
             confluence,
             enabled_tools,
+            disabled_tools,
             read_only,
             dry_run,
             audit_log,
             cache_ttl,
         })
     }
+}
+
+/// Reads a credential from `{name}`, or from the file `{name}_FILE` points at.
+///
+/// The `*_FILE` convention is what Docker and Kubernetes secrets expect (D28):
+/// the secret is mounted as a file, so it never appears in the MCP client's
+/// config JSON, in `docker inspect`, or in the process environment.
+///
+/// Both spellings set at once is an error rather than a precedence rule — with
+/// credentials, guessing which one the operator meant is the wrong instinct.
+fn secret(name: &str) -> Result<Option<String>> {
+    let inline = env::var(name).ok();
+    let Some(path) = env::var(format!("{name}_FILE"))
+        .ok()
+        .filter(|p| !p.trim().is_empty())
+    else {
+        return Ok(inline);
+    };
+    if inline.is_some() {
+        return Err(Error::Config(format!(
+            "{name} and {name}_FILE are both set; use one"
+        )));
+    }
+    let path = path.trim();
+    let contents = std::fs::read_to_string(path)
+        .map_err(|e| Error::Config(format!("failed to read {name}_FILE `{path}`: {e}")))?;
+    // Trailing newlines are what `echo secret > file` leaves behind, and a
+    // token with one attached fails authentication for no visible reason.
+    let value = contents.trim();
+    if value.is_empty() {
+        return Err(Error::Config(format!(
+            "{name}_FILE `{path}` is empty; it must contain the token"
+        )));
+    }
+    Ok(Some(value.to_string()))
 }
 
 /// Reads a boolean switch. Absent or unrecognized means off: a flag that
@@ -148,7 +185,15 @@ fn oauth_from_env() -> Result<Option<(Arc<OAuthSession>, String)>> {
         "ATLASSIAN_OAUTH_REFRESH_TOKEN",
         "ATLASSIAN_OAUTH_CLOUD_ID",
     ];
-    let values: Vec<Option<String>> = vars.iter().map(|v| env::var(v).ok()).collect();
+    // The client secret and the refresh token are credentials, so they also
+    // accept the `*_FILE` form; the client and cloud ids are identifiers.
+    let values: Vec<Option<String>> = vars
+        .iter()
+        .map(|name| match *name {
+            "ATLASSIAN_OAUTH_CLIENT_SECRET" | "ATLASSIAN_OAUTH_REFRESH_TOKEN" => secret(name),
+            _ => Ok(env::var(name).ok()),
+        })
+        .collect::<Result<_>>()?;
     if values.iter().all(Option::is_none) {
         return Ok(None);
     }
@@ -186,24 +231,26 @@ impl ServiceConfig {
         let base_url = base_url.trim_end_matches('/').to_string();
 
         // A personal access token switches the instance into Server/DC mode (D6).
-        if let Ok(token) = env::var(format!("{prefix}_PERSONAL_TOKEN")) {
+        if let Some(token) = secret(&format!("{prefix}_PERSONAL_TOKEN"))? {
             return Ok(Some(Self {
                 base_url,
                 auth: Auth::Pat { token },
             }));
         }
 
-        let username = env::var(format!("{prefix}_USERNAME"));
-        let token = env::var(format!("{prefix}_API_TOKEN"));
+        let username = env::var(format!("{prefix}_USERNAME")).ok();
+        let token = secret(&format!("{prefix}_API_TOKEN"))?;
         match (username, token) {
-            (Ok(username), Ok(token)) => Ok(Some(Self {
+            (Some(username), Some(token)) => Ok(Some(Self {
                 base_url,
                 auth: Auth::Basic { username, token },
             })),
             _ => Err(Error::Config(format!(
                 "{prefix}_URL is set but credentials are incomplete: \
                  set {prefix}_USERNAME + {prefix}_API_TOKEN (Cloud) \
-                 or {prefix}_PERSONAL_TOKEN (Server/Data Center)"
+                 or {prefix}_PERSONAL_TOKEN (Server/Data Center). \
+                 Every token may instead be given as a path, via the matching \
+                 *_FILE variable"
             ))),
         }
     }
@@ -211,8 +258,101 @@ impl ServiceConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_truthy, parse_cache_ttl};
+    use super::{is_truthy, parse_cache_ttl, secret};
+    use std::env;
     use std::time::Duration;
+
+    /// Each case uses its own variable names, so the cases do not race each
+    /// other through the process environment.
+    struct Var(String);
+
+    impl Var {
+        fn new(case: &str) -> Self {
+            Self(format!("MCP_TEST_SECRET_{case}"))
+        }
+
+        fn inline(&self, value: &str) -> &Self {
+            env::set_var(&self.0, value);
+            self
+        }
+
+        fn file(&self, contents: &str) -> &Self {
+            let path = env::temp_dir().join(format!("{}-{}", self.0, std::process::id()));
+            std::fs::write(&path, contents).unwrap();
+            env::set_var(format!("{}_FILE", self.0), &path);
+            self
+        }
+
+        fn missing_file(&self) -> &Self {
+            env::set_var(format!("{}_FILE", self.0), "/nonexistent-directory/token");
+            self
+        }
+
+        fn read(&self) -> super::Result<Option<String>> {
+            secret(&self.0)
+        }
+    }
+
+    impl Drop for Var {
+        fn drop(&mut self) {
+            env::remove_var(&self.0);
+            env::remove_var(format!("{}_FILE", self.0));
+            let _ = std::fs::remove_file(env::temp_dir().join(format!(
+                "{}-{}",
+                self.0,
+                std::process::id()
+            )));
+        }
+    }
+
+    #[test]
+    fn a_secret_is_read_inline_or_from_the_file_the_var_points_at() {
+        let unset = Var::new("UNSET");
+        assert_eq!(unset.read().unwrap(), None);
+
+        let inline = Var::new("INLINE");
+        inline.inline("token-from-env");
+        assert_eq!(inline.read().unwrap().as_deref(), Some("token-from-env"));
+
+        let from_file = Var::new("FROM_FILE");
+        from_file.file("token-from-file");
+        assert_eq!(
+            from_file.read().unwrap().as_deref(),
+            Some("token-from-file")
+        );
+    }
+
+    #[test]
+    fn the_trailing_newline_of_a_secret_file_is_stripped() {
+        // What `echo secret > file` leaves behind; kept, it fails auth with no
+        // visible cause.
+        let var = Var::new("NEWLINE");
+        var.file("token-from-file\n");
+        assert_eq!(var.read().unwrap().as_deref(), Some("token-from-file"));
+    }
+
+    #[test]
+    fn setting_both_spellings_is_an_error_rather_than_a_precedence_rule() {
+        let var = Var::new("BOTH");
+        var.inline("a").file("b");
+        let error = var.read().unwrap_err().to_string();
+        assert!(error.contains("MCP_TEST_SECRET_BOTH"), "{error}");
+        assert!(error.contains("_FILE"), "{error}");
+    }
+
+    #[test]
+    fn an_unreadable_or_empty_secret_file_names_the_variable_and_the_path() {
+        let missing = Var::new("MISSING");
+        missing.missing_file();
+        let error = missing.read().unwrap_err().to_string();
+        assert!(error.contains("MCP_TEST_SECRET_MISSING_FILE"), "{error}");
+        assert!(error.contains("/nonexistent-directory/token"), "{error}");
+
+        let empty = Var::new("EMPTY");
+        empty.file("   \n");
+        let error = empty.read().unwrap_err().to_string();
+        assert!(error.contains("is empty"), "{error}");
+    }
 
     #[test]
     fn a_flag_is_off_unless_it_is_explicitly_on() {

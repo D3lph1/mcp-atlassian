@@ -101,17 +101,36 @@ impl AtlassianServer {
             let not_allowlisted = config
                 .enabled_tools
                 .as_ref()
-                .is_some_and(|allow| !allow.contains(name));
-            if unconfigured_service || read_only_write || not_allowlisted {
+                .is_some_and(|allow| !allow.matches(name));
+            // The denylist is subtracted last and wins over the allowlist: a
+            // tool named by both is removed, so `jira_*` plus
+            // `*_delete_*` reads the way it looks.
+            let denied = config
+                .disabled_tools
+                .as_ref()
+                .is_some_and(|deny| deny.matches(name));
+            if unconfigured_service || read_only_write || not_allowlisted || denied {
                 tool_router.remove_route(name);
             }
         }
-        if let Some(allow) = &config.enabled_tools {
-            for name in allow {
-                if !all_names.iter().any(|n| n == name) {
-                    tracing::warn!(tool = %name, "ENABLED_TOOLS names an unknown tool");
-                }
+        // A pattern that matches nothing does nothing, and a typo in a wildcard
+        // looks exactly like a deliberately narrow filter.
+        for (variable, filter) in [
+            ("ENABLED_TOOLS", &config.enabled_tools),
+            ("DISABLED_TOOLS", &config.disabled_tools),
+        ] {
+            let Some(filter) = filter else { continue };
+            for pattern in filter.unmatched(&all_names) {
+                tracing::warn!(%pattern, "{variable} pattern matches no tool");
             }
+        }
+        if tool_router.list_all().is_empty() {
+            // Reachable by config alone — `DISABLED_TOOLS=*`, or an allowlist
+            // that survives nothing. The client would just see an empty tool
+            // list and no reason for it.
+            tracing::warn!(
+                "no tools are registered: check ENABLED_TOOLS, DISABLED_TOOLS and READ_ONLY"
+            );
         }
 
         // Dry run replaces the surviving write routes with a description of

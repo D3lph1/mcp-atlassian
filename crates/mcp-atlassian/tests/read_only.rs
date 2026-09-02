@@ -23,6 +23,7 @@ fn config(read_only: bool) -> Config {
         jira: Some(service()),
         confluence: Some(service()),
         enabled_tools: None,
+        disabled_tools: None,
         read_only,
         dry_run: false,
         audit_log: None,

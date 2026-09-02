@@ -11,10 +11,12 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
   links/epics, fields, agile, watchers, batch create, changelog; Confluence
   pages incl. section edits and moves, inline comments, attachments, version
   history and diff, templates, restrictions
-- Auth: API token (Cloud), PAT (Server/DC), OAuth 2.0 refresh flow (D17)
+- Auth: API token (Cloud), PAT (Server/DC), OAuth 2.0 refresh flow (D17); every
+  token also readable from a file via `*_FILE` (D28)
 - Transports: stdio (default), streamable HTTP behind the `http` feature (D18)
-- Filtering: `ENABLED_TOOLS`; `READ_ONLY` driven by tool annotations
-  (40 read-only / 30 write, 14 of them destructive) — D22
+- Filtering: `ENABLED_TOOLS` / `DISABLED_TOOLS`, wildcards anywhere in a
+  pattern (`jira_*`, `*_get_*`), deny wins (D27); `READ_ONLY` driven by tool
+  annotations (40 read-only / 30 write, 14 of them destructive) — D22
 - `DRY_RUN=true`: write tools stay listed, are validated against their own
   input schema and described instead of performed; reads still execute (D26)
 - Audit log: `AUDIT_LOG_FILE` appends one JSONL record per write call —
@@ -27,12 +29,12 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
   resource templates; `resources/list` intentionally empty (D24)
 - TTL cache: `CACHE_TTL` seconds, reference data only (projects, issue types,
   boards, link types, fields, spaces), off by default (D25)
-- Tests: 119 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
+- Tests: 143 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
   docker); scratch Dockerfile
 - Binary: 3.6 MB stdio / 3.9 MB with http; idle RSS ~2 MB (target < 30 MB —
   comfortably under). The audit log added ~16 KB (chrono was already in the
-  tree via rmcp), resources ~15 KB, the TTL cache ~16 KB, dry run 112 bytes —
-  no new dependencies
+  tree via rmcp), resources ~15 KB, the TTL cache ~16 KB, dry run 112 bytes,
+  tool selection + `*_FILE` ~16 KB — no new dependencies
 
 Deliberately not done: SSE transport (deprecated in MCP), multi-user proxy.
 
@@ -61,8 +63,11 @@ Known loose ends:
 
 ### Security / operations
 - [x] Audit log of write operations (JSONL to a file) — `AUDIT_LOG_FILE`, D23
+- [x] Secrets from files — `*_FILE` on every token variable, D28
 - [ ] Multi-instance (two Jiras) — needs a TOML config instead of env vars,
-      plus tool prefixes
+      plus tool prefixes. This is the *only* open case for a config file; a
+      file as a second spelling of the current settings was considered and
+      rejected (D28)
 
 ### Wider coverage
 - [ ] Jira: `move_issue` across projects (Cloud async task API — needs task
@@ -78,6 +83,13 @@ Known loose ends:
 - [ ] Homebrew formula
 
 ## Notes
+
+**Config in a file: not doing (D28).** An MCP stdio server is launched by its
+client from a config file that already exists and is not ours. A second one
+splits settings across two places, adds a precedence matrix, and forces every
+error message to know which source a value came from (D13). The two real pains
+it would have solved are solved without it: wildcards for `ENABLED_TOOLS`
+(D27) and `*_FILE` for secrets (D28). Multi-instance stays the one open case.
 
 **Dry run (landed, D26).** One router wrapper in `mcp-atlassian/src/dry_run.rs`,
 same shape as the audit wrapper and keyed off the same `readOnlyHint`
@@ -101,7 +113,7 @@ on writes — a `create_project` through this server still waits out the TTL.
 
 ## Key files
 
-- `DECISIONS.md` — 26 architecture decisions (D1–D26); read before structural
+- `DECISIONS.md` — 28 architecture decisions (D1–D28); read before structural
   changes
 - `CLAUDE.md` — commands, layout, conventions, env vars, roadmap
 - `crates/atlassian-{jira,confluence}/src/tools/` — tools, next to the
