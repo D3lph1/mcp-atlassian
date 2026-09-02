@@ -108,6 +108,11 @@ cargo build --release --features http
 Tests never touch a real Atlassian instance; they run against wiremock and
 an in-memory MCP transport.
 
-## License
+## License and trademarks
 
-MIT
+MIT.
+
+Jira, Confluence and Atlassian are trademarks of Atlassian Pty Ltd, and all
+rights to them belong to Atlassian. This project is an independent,
+community-built tool: it is not developed, endorsed or supported by
+Atlassian.
