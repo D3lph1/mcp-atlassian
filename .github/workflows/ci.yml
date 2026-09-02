@@ -152,11 +152,14 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/d3lph1/mcp-atlassian
+          # `latest=auto` puts `latest` on a `v*` tag and nowhere else, so it
+          # always means the newest release; master rides under `edge`.
+          flavor: latest=auto
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=sha
       - uses: docker/build-push-action@v6
         with:
           context: .

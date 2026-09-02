@@ -1047,8 +1047,12 @@ README tells a user to run it and because it is the only thing that proves
 the source-to-image path still works — CI keeps building it, unpushed. Their
 runtime stages must stay identical; that is four lines each.
 
-Tags: `latest` and `sha-<commit>` on master, `X.Y.Z` and `X.Y` on a `v*`
-tag. Auth is the workflow's own `GITHUB_TOKEN` with `packages: write`, so
-there is no secret to manage. The first push creates the package private —
-it has to be made public once by hand in the package settings, and the
-repository linked from there.
+Tags: a `v*` tag publishes `X.Y.Z`, `X.Y` and `latest`; master publishes
+`edge` and `sha-<commit>`. `latest` therefore always means the newest
+release — a user who pulls it never lands on a half-finished master, and
+someone who wants the tip asks for `edge` on purpose.
+
+Auth is the workflow's own `GITHUB_TOKEN` with `packages: write`, so there
+is no secret to manage. The first push creates the package private — it has
+to be made public once by hand in the package settings, and the repository
+linked from there.
