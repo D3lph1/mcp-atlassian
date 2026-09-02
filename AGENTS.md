@@ -62,6 +62,12 @@ the GitHub release, then `cargo publish --workspace` (D45). A `version` job
 fails the tag if the manifest and the tag disagree, so the two never drift.
 Publishing needs `CARGO_REGISTRY_TOKEN` in the repository secrets.
 
+One step stays manual: the Homebrew formula in `d3lph1/homebrew-tap`
+(`Formula/mcp-atlassian.rb`). After a release, point its four URLs at the
+new tag and replace the four checksums from that release's `SHA256SUMS`;
+`brew audit --strict` and `brew install d3lph1/tap/mcp-atlassian` verify it
+(D45).
+
 Release build (size-optimized, see profile in Cargo.toml):
 
 ```bash

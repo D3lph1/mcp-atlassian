@@ -1027,6 +1027,15 @@ image) and macOS, and `x86_64` for Windows, all with the `http` feature. A
 cross-compiles with `taiki-e/setup-cross-toolchain-action`; macOS builds
 both targets on the arm64 runner, which Apple's toolchain supports.
 
+Homebrew is a tap of its own, `d3lph1/homebrew-tap`, not homebrew-core —
+core wants a project with an audience this one does not have yet. The
+formula downloads the release binary for the platform and installs it;
+nothing is compiled on the user's machine, and the four checksums come from
+the release's own `SHA256SUMS`. It is the one artefact CI does not update:
+a new version means editing the formula in that repository, because pushing
+to another repository would need a personal access token stored here, and
+the formula is four lines of change once a release.
+
 A tag also publishes the five crates to crates.io, and the job order is the
 point: `release` first, `publish` after it and only if it succeeded. A GitHub
 release can be deleted and a container tag can be overwritten, but a published
@@ -1092,11 +1101,6 @@ on writes: no write tool changes anything the cache holds. A CHANGELOG:
 release notes are generated from commits.
 
 **Open, in rough order of value.**
-- A Homebrew formula. crates.io itself is done: all five crates are
-  published at 0.1.1, so `cargo install mcp-atlassian --features http`
-  works. Each carries the `mcp-atlassian-` prefix (D15), its own README and
-  a copy of the MIT text — cargo packages only what sits inside a crate
-  directory, so the root copies of both never reached the archives.
 - `--list-tools`, so a user can see the surface without configuring.
 - A `jira_release_notes` prompt (fixVersion → grouped summaries).
 - JSM (Service Management) requests and queues; Jira `move_issue` across

@@ -17,6 +17,7 @@ Download a binary from [Releases](https://github.com/d3lph1/mcp-atlassian/releas
 (Linux x86_64/arm64 static, macOS x86_64/arm64, Windows x86_64), or:
 
 ```bash
+brew install d3lph1/tap/mcp-atlassian
 cargo install mcp-atlassian --features http
 docker pull ghcr.io/d3lph1/mcp-atlassian:latest   # ~5 MB scratch image, amd64 + arm64
 docker build -t mcp-atlassian .                   # or build it yourself
