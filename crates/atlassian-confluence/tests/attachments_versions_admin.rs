@@ -1,4 +1,4 @@
-use atlassian_client::{Auth, ServiceConfig};
+use atlassian_client::{Auth, ServiceConfig, Upload};
 use atlassian_confluence::ConfluenceClient;
 use serde_json::json;
 use wiremock::matchers::{body_partial_json, method, path, query_param};
@@ -11,6 +11,7 @@ fn client(server: &MockServer) -> ConfluenceClient {
             username: "u@example.com".into(),
             token: "t".into(),
         },
+        deployment: None,
     })
     .unwrap()
 }
@@ -25,22 +26,25 @@ async fn attachment_download_resolves_relative_link() {
                 "id": "att1",
                 "title": "diagram.png",
                 "extensions": { "mediaType": "image/png", "fileSize": 3 },
-                "_links": { "download": "/download/attachments/123/diagram.png" }
+                "_links": { "download": "/download/attachments/123/diagram.png?version=1&modificationDate=1700000000000&api=v2" }
             }],
             "size": 1
         })))
         .mount(&server)
         .await;
-    // The download link is instance-relative and must resolve under /wiki.
+    // The download link is instance-relative, carries a query string (as real
+    // ones always do) and must resolve under /wiki with the query intact.
     Mock::given(method("GET"))
         .and(path("/wiki/download/attachments/123/diagram.png"))
+        .and(query_param("version", "1"))
+        .and(query_param("api", "v2"))
         .respond_with(ResponseTemplate::new(200).set_body_bytes(b"PNG".to_vec()))
         .expect(1)
         .mount(&server)
         .await;
 
     let confluence = client(&server);
-    let attachments = confluence.get_attachments("123", 25).await.unwrap();
+    let attachments = confluence.get_attachments("123", 25, 0).await.unwrap();
     let link = attachments.results[0]
         .links
         .as_ref()
@@ -66,7 +70,7 @@ async fn upload_attachment_posts_multipart() {
         .await;
 
     let uploaded = client(&server)
-        .upload_attachment("123", "notes.txt", b"hi".to_vec())
+        .upload_attachment("123", Upload::bytes("notes.txt", b"hi".to_vec()))
         .await
         .unwrap();
     assert_eq!(uploaded.results[0].id, "att2");
@@ -192,22 +196,59 @@ async fn inline_comment_carries_text_anchor() {
         .unwrap();
 }
 
+fn dc_client(server: &MockServer) -> ConfluenceClient {
+    ConfluenceClient::new(&ServiceConfig {
+        base_url: format!("{}/wiki", server.uri()),
+        auth: Auth::Pat {
+            token: "pat".into(),
+        },
+        deployment: None,
+    })
+    .unwrap()
+}
+
 #[tokio::test]
-async fn restrictions_are_sent_per_operation() {
+async fn restrictions_are_sent_per_operation_with_the_deployments_user_reference() {
+    // Cloud knows users by account id …
     let server = MockServer::start().await;
     Mock::given(method("PUT"))
         .and(path("/wiki/rest/api/content/123/restriction"))
         .and(body_partial_json(json!([
-            { "operation": "read" },
+            { "operation": "read", "restrictions": { "user": { "results": [{ "accountId": "acc-1" }] } } },
+            { "operation": "update", "restrictions": { "group": { "results": [{ "name": "devs" }] } } }
+        ])))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "results": [] })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let confluence = client(&server);
+    assert!(confluence.is_cloud());
+    confluence
+        .set_restrictions("123", &["acc-1".into()], &[], &[], &["devs".into()])
+        .await
+        .unwrap();
+    let sent: serde_json::Value =
+        serde_json::from_slice(&server.received_requests().await.unwrap()[0].body).unwrap();
+    assert!(sent[0]["restrictions"]["user"]["results"][0]
+        .get("username")
+        .is_none());
+
+    // … Server/DC by username.
+    let server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .and(path("/wiki/rest/api/content/123/restriction"))
+        .and(body_partial_json(json!([
+            { "operation": "read", "restrictions": { "user": { "results": [{ "username": "jdoe" }] } } },
             { "operation": "update" }
         ])))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "results": [] })))
         .expect(1)
         .mount(&server)
         .await;
-
-    client(&server)
-        .set_restrictions("123", &["acc-1".into()], &[], &[], &["devs".into()])
+    let confluence = dc_client(&server);
+    assert!(!confluence.is_cloud());
+    confluence
+        .set_restrictions("123", &["jdoe".into()], &[], &[], &[])
         .await
         .unwrap();
 }

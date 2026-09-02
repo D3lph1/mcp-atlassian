@@ -55,12 +55,64 @@ pub struct Ancestor {
     pub title: String,
 }
 
-/// v1 paginated envelope: `{results, size, start, limit}`.
+/// v1 paginated envelope: `{results, size, start, limit, _links.next}`.
+///
+/// `has_more` is derived from `_links.next` (set when the server has another
+/// page) with a size-equals-limit fallback for endpoints that omit the link,
+/// so a caller can page with `start + size` without parsing Confluence's
+/// link map.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(from = "RawResultsPage<T>")]
+// The schema describes what is *serialized* — this struct — not the wire
+// envelope it is read from.
+#[schemars(!from)]
 pub struct ResultsPage<T> {
     pub results: Vec<T>,
-    #[serde(default)]
+    /// Number of items in `results`.
     pub size: u64,
+    /// Offset of the first item; pass `start + size` to get the next page.
+    pub start: u64,
+    /// Page size the server applied.
+    pub limit: u64,
+    /// Whether another page exists.
+    pub has_more: bool,
+}
+
+#[derive(Deserialize)]
+struct RawResultsPage<T> {
+    #[serde(default = "Vec::new")]
+    results: Vec<T>,
+    #[serde(default)]
+    size: Option<u64>,
+    #[serde(default)]
+    start: u64,
+    #[serde(default)]
+    limit: u64,
+    #[serde(rename = "_links", default)]
+    links: Option<PageLinks>,
+}
+
+#[derive(Deserialize, Default)]
+struct PageLinks {
+    #[serde(default)]
+    next: Option<String>,
+}
+
+impl<T> From<RawResultsPage<T>> for ResultsPage<T> {
+    fn from(raw: RawResultsPage<T>) -> Self {
+        let size = raw.size.unwrap_or(raw.results.len() as u64);
+        let has_more = match raw.links.and_then(|l| l.next) {
+            Some(_) => true,
+            None => raw.limit > 0 && size >= raw.limit,
+        };
+        Self {
+            results: raw.results,
+            size,
+            start: raw.start,
+            limit: raw.limit,
+            has_more,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]

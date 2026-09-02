@@ -2,7 +2,8 @@
 //!
 //! The v1 content API works on both Cloud (under the `/wiki` base-URL prefix)
 //! and Server/Data Center — one code path, mirroring the Jira v2 decision
-//! (DECISIONS.md D5). Bodies are exchanged in storage format; conversion to
+//! (DECISIONS.md D5). The client still knows which deployment it talks to
+//! (D41): user references differ today, and Cloud's v2 API will diverge. Bodies are exchanged in storage format; conversion to
 //! and from Markdown happens in the MCP layer via `storage-markdown` (D10).
 
 mod models;
@@ -15,7 +16,8 @@ pub mod tools;
 use std::sync::Arc;
 use std::time::Duration;
 
-use atlassian_client::{AtlassianClient, Result, ServiceConfig, TtlCache};
+use atlassian_client::query::quote;
+use atlassian_client::{AtlassianClient, Deployment, Result, ServiceConfig, TtlCache, Upload};
 use serde_json::{json, Value};
 
 pub use models::{
@@ -27,6 +29,10 @@ pub use models::{
 #[derive(Debug, Clone)]
 pub struct ConfluenceClient {
     client: AtlassianClient,
+    /// Cloud or Server/DC, from the auth mode or `CONFLUENCE_DEPLOYMENT`
+    /// (D41). Decides the user-reference shape today, and is where the
+    /// Cloud-only v2 endpoints will branch when v1 goes.
+    cloud: bool,
     /// Reference data only, and only when a TTL is configured (D25).
     cache: Option<Arc<TtlCache>>,
 }
@@ -35,14 +41,26 @@ impl ConfluenceClient {
     pub fn new(config: &ServiceConfig) -> Result<Self> {
         Ok(Self {
             client: AtlassianClient::new(config)?,
+            cloud: config.deployment() == Deployment::Cloud,
             cache: None,
         })
+    }
+
+    /// Whether this is Confluence Cloud (as opposed to Server/Data Center).
+    pub fn is_cloud(&self) -> bool {
+        self.cloud
     }
 
     /// Caches the space list for `ttl`. Page content, comments, attachments
     /// and versions are never cached — they are the things people edit (D25).
     pub fn with_cache(mut self, ttl: Duration) -> Self {
         self.cache = Some(Arc::new(TtlCache::new(ttl)));
+        self
+    }
+
+    /// Per-request timeout (`REQUEST_TIMEOUT`).
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.client = self.client.with_timeout(timeout);
         self
     }
 
@@ -86,11 +104,16 @@ impl ConfluenceClient {
         &self,
         page_id: &str,
         limit: u32,
+        start: u32,
     ) -> Result<ResultsPage<Content>> {
         let path = format!("/rest/api/content/{page_id}/child/page");
         let limit = limit.to_string();
+        let start = start.to_string();
         self.client
-            .get(&path, &[("limit", &limit), ("expand", "version")])
+            .get(
+                &path,
+                &[("limit", &limit), ("start", &start), ("expand", "version")],
+            )
             .await
     }
 
@@ -157,13 +180,23 @@ impl ConfluenceClient {
         self.client.delete(&path, &[]).await
     }
 
-    pub async fn get_comments(&self, page_id: &str, limit: u32) -> Result<ResultsPage<Content>> {
+    pub async fn get_comments(
+        &self,
+        page_id: &str,
+        limit: u32,
+        start: u32,
+    ) -> Result<ResultsPage<Content>> {
         let path = format!("/rest/api/content/{page_id}/child/comment");
         let limit = limit.to_string();
+        let start = start.to_string();
         self.client
             .get(
                 &path,
-                &[("limit", &limit), ("expand", "body.storage,version")],
+                &[
+                    ("limit", &limit),
+                    ("start", &start),
+                    ("expand", "body.storage,version"),
+                ],
             )
             .await
     }
@@ -195,9 +228,10 @@ impl ConfluenceClient {
         .await
     }
 
-    pub async fn get_labels(&self, page_id: &str) -> Result<ResultsPage<Label>> {
+    pub async fn get_labels(&self, page_id: &str, limit: u32) -> Result<ResultsPage<Label>> {
         let path = format!("/rest/api/content/{page_id}/label");
-        self.client.get(&path, &[]).await
+        let limit = limit.to_string();
+        self.client.get(&path, &[("limit", &limit)]).await
     }
 
     pub async fn add_label(&self, page_id: &str, label: &str) -> Result<ResultsPage<Label>> {
@@ -250,7 +284,10 @@ impl ConfluenceClient {
         limit: u32,
     ) -> Result<ResultsPage<Content>> {
         let limit = limit.to_string();
-        let cql = format!("space = \"{space_key}\" AND type = page ORDER BY title");
+        let cql = format!(
+            "space = {} AND type = page ORDER BY title",
+            quote(space_key)
+        );
         self.client
             .get(
                 "/rest/api/content/search",
@@ -359,7 +396,7 @@ impl ConfluenceClient {
     /// on v1, so this goes through the search API with a `user.fullname` term.
     pub async fn search_users(&self, query: &str, limit: u32) -> Result<Vec<Person>> {
         let limit = limit.to_string();
-        let cql = format!("user.fullname ~ \"{query}\"");
+        let cql = format!("user.fullname ~ {}", quote(query));
         let page: ResultsPage<models::UserSearchResult> = self
             .client
             .get("/rest/api/search/user", &[("cql", &cql), ("limit", &limit)])
@@ -373,11 +410,20 @@ impl ConfluenceClient {
         &self,
         page_id: &str,
         limit: u32,
+        start: u32,
     ) -> Result<ResultsPage<ConfluenceAttachment>> {
         let path = format!("/rest/api/content/{page_id}/child/attachment");
         let limit = limit.to_string();
+        let start = start.to_string();
         self.client
-            .get(&path, &[("limit", &limit), ("expand", "extensions")])
+            .get(
+                &path,
+                &[
+                    ("limit", &limit),
+                    ("start", &start),
+                    ("expand", "extensions"),
+                ],
+            )
             .await
     }
 
@@ -387,14 +433,25 @@ impl ConfluenceClient {
         self.client.get_bytes(download_path).await
     }
 
+    /// Streams an attachment into `path` (D37); returns the size written.
+    pub async fn download_attachment_to(
+        &self,
+        download_path: &str,
+        path: &std::path::Path,
+        max_bytes: Option<u64>,
+    ) -> Result<u64> {
+        self.client
+            .download_to_file(download_path, path, max_bytes)
+            .await
+    }
+
     pub async fn upload_attachment(
         &self,
         page_id: &str,
-        file_name: &str,
-        bytes: Vec<u8>,
+        upload: Upload,
     ) -> Result<ResultsPage<ConfluenceAttachment>> {
         let path = format!("/rest/api/content/{page_id}/child/attachment");
-        self.client.post_multipart(&path, file_name, bytes).await
+        self.client.post_multipart(&path, upload).await
     }
 
     pub async fn delete_attachment(&self, attachment_id: &str) -> Result<()> {
@@ -443,20 +500,20 @@ impl ConfluenceClient {
     ) -> Result<Restrictions> {
         let path = format!("/rest/api/content/{page_id}/restriction");
         let body = json!([
-            restriction_entry("read", read_users, read_groups),
-            restriction_entry("update", update_users, update_groups),
+            restriction_entry(self.cloud, "read", read_users, read_groups),
+            restriction_entry(self.cloud, "update", update_users, update_groups),
         ]);
         self.client.put(&path, &body).await
     }
 }
 
-/// Builds one `{operation, restrictions: {user, group}}` entry. User ids are
-/// account ids on Cloud and usernames on Server/DC; both are sent under the
-/// key the deployment expects by including each form.
-fn restriction_entry(operation: &str, users: &[String], groups: &[String]) -> Value {
+/// Builds one `{operation, restrictions: {user, group}}` entry. Users are
+/// referenced by account id on Cloud and by username on Server/DC.
+fn restriction_entry(cloud: bool, operation: &str, users: &[String], groups: &[String]) -> Value {
+    let user_key = if cloud { "accountId" } else { "username" };
     let user_entries: Vec<Value> = users
         .iter()
-        .map(|u| json!({ "type": "known", "accountId": u, "username": u }))
+        .map(|u| json!({ "type": "known", user_key: u }))
         .collect();
     let group_entries: Vec<Value> = groups
         .iter()
@@ -481,15 +538,24 @@ fn restriction_entry(operation: &str, users: &[String], groups: &[String]) -> Va
 #[derive(Debug, Clone)]
 pub struct ConfluenceTools {
     client: std::sync::Arc<ConfluenceClient>,
+    files: atlassian_client::mcp::FileAccess,
 }
 
 #[cfg(feature = "mcp")]
 impl ConfluenceTools {
-    pub fn new(client: std::sync::Arc<ConfluenceClient>) -> Self {
-        Self { client }
+    pub fn new(
+        client: std::sync::Arc<ConfluenceClient>,
+        files: atlassian_client::mcp::FileAccess,
+    ) -> Self {
+        Self { client, files }
     }
 
     pub(crate) fn client(&self) -> &ConfluenceClient {
         &self.client
+    }
+
+    /// Where the attachment tools may read and write (D37).
+    pub(crate) fn files(&self) -> &atlassian_client::mcp::FileAccess {
+        &self.files
     }
 }

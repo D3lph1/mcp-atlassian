@@ -18,14 +18,10 @@ fn config(mock: &MockServer) -> Config {
                 username: "u@example.com".into(),
                 token: "t".into(),
             },
+            deployment: None,
         }),
         confluence: None,
-        enabled_tools: None,
-        disabled_tools: None,
-        read_only: false,
-        dry_run: false,
-        audit_log: None,
-        cache_ttl: None,
+        ..Config::default()
     }
 }
 

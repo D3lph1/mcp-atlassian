@@ -37,4 +37,8 @@ pub enum Error {
 
     #[error("failed to decode API response: {0}")]
     Decode(String),
+
+    /// A local file could not be read or written, or is over the size limit.
+    #[error("file error: {0}")]
+    File(String),
 }

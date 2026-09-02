@@ -8,7 +8,8 @@ typically need an order of magnitude more.
 Architecture decisions live in `DECISIONS.md` — read it before changing
 anything structural. Key ones: rmcp SDK (D1), Jira API v2 only (D5),
 conventional env-var names (D8), curated tool set (D9), deployment detection
-by auth mode (D16).
+by auth mode with an explicit override (D16, D41). The improvement plan and its phase sequence live in
+`HANDOFF-PLAN.md`.
 
 Project status and the feature backlog live in `HANDOFF.md` — update it when
 finishing a phase or picking up a backlog item.
@@ -44,6 +45,7 @@ optional — tools register only for configured services.
 | `JIRA_USERNAME` + `JIRA_API_TOKEN` | Cloud auth (Basic) |
 | `*_FILE` on any token var | read the secret from that path instead of the environment — `JIRA_API_TOKEN_FILE=/run/secrets/jira`; Docker/Kubernetes secrets convention (D28). Setting both spellings is an error |
 | `JIRA_PERSONAL_TOKEN` | Server/DC auth (Bearer PAT); presence switches mode |
+| `JIRA_DEPLOYMENT` / `CONFLUENCE_DEPLOYMENT` | `cloud` or `server`: overrides the auth-mode inference, e.g. Data Center behind Basic auth (D41) |
 | `CONFLUENCE_URL` / `CONFLUENCE_USERNAME` / `CONFLUENCE_API_TOKEN` / `CONFLUENCE_PERSONAL_TOKEN` | same scheme |
 | `ATLASSIAN_OAUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_REFRESH_TOKEN` / `_CLOUD_ID` | OAuth 2.0 (Cloud only); all four together, takes precedence over `*_URL` and configures both services (D17) |
 | `ENABLED_TOOLS` | comma-separated allowlist of tool-name patterns; `*` matches any run of characters anywhere (`jira_*`, `*_get_*`, `*_attachment*`); no `*` = exact name; empty = all (D27) |
@@ -51,11 +53,16 @@ optional — tools register only for configured services.
 | `READ_ONLY` | `true` → only tools annotated `readOnlyHint` are registered; writes are absent from `tools/list` (D22). Named `READ_ONLY`, not `READ_ONLY_MODE` as other servers spell it (D8) |
 | `DRY_RUN` | `true` → write tools stay listed but are validated and described instead of performed (D26). For demos and prompt rehearsal; reads still execute for real |
 | `AUDIT_LOG_FILE` | path to a JSONL audit log; every write call appends one record (D23). Unset = no auditing |
+| `ATTACHMENT_DIR` | the only directory attachment tools may read from and write to; unset = any path, with a startup warning (D37) |
+| `MAX_ATTACHMENT_BYTES` | cap on one attachment either direction; default 50 MB, `0` = no limit (D37) |
+| `REQUEST_TIMEOUT` | seconds per Atlassian request (default 30); downloads and uploads get ten times it (D40) |
 | `CACHE_TTL` | seconds to cache reference data (projects, issue types, boards, spaces, fields); unset or `0` = no caching (D25) |
 | `NO_BANNER` | `true` → print the structured startup line instead of the banner (D29) |
 | `NO_COLOR` | any value → no ANSI colour in the banner (colour is also off when stderr is not a terminal) |
+| `RUST_LOG` | `tracing` directives, `info` by default (`debug`, `atlassian_client=debug,info`); no regex forms |
 | `TRANSPORT` | `stdio` (default) or `streamable-http` (needs `--features http`) |
 | `HOST` / `PORT` / `ALLOWED_HOSTS` | HTTP transport bind address (127.0.0.1:8000) and extra Host-header allowlist (D18) |
+| `MCP_BEARER_TOKEN` (or `_FILE`) | HTTP transport: every `/mcp` request must carry this bearer token; `/healthz` is exempt (D39) |
 
 ## Layout (cargo workspace)
 
@@ -83,7 +90,9 @@ crates/
     src/tools/                   #   search, pages, comments, spaces, attachments,
                                  #     versions, admin, storage (projections)
   mcp-atlassian/                 # the server; contains no product knowledge
-    src/main.rs                  #   entry: config, transport (stdio / http)
+    src/main.rs                  #   entry: config, transport dispatch
+    src/http.rs                  #   streamable HTTP: bearer token, /healthz,
+                                 #     graceful stop (`http` feature, D39)
     src/server.rs                #   composition, route filtering, ServerHandler
     src/audit.rs                 #   JSONL audit log of write calls (D23)
     src/banner.rs                #   startup banner; stderr only, never stdout (D29)
@@ -147,6 +156,29 @@ is a plain REST library (D15).
   Pagination offsets are not page sizes and are not capped.
 - Values interpolated into an endpoint path are checked once, in
   `AtlassianClient::request`; do not re-implement that per call site (D31).
+  A link the API returned (attachment `content`, `_links.download`) goes
+  through `get_bytes`, which checks origin instead — it legitimately carries
+  a query string (D33).
+- Values interpolated into JQL/CQL go through `atlassian_client::query::quote`.
+- Every environment variable is read in `Config::read` (`config.rs`), which
+  takes an `Env`; nothing else calls `std::env::var`. Tests build a `Config`
+  with `..Config::default()`.
+- A tool that touches the local filesystem resolves the path through the
+  product state's `files()` (`FileAccess`, D37); never `tokio::fs` on a path
+  the model supplied.
+- `Auth` has a hand-written `Debug`; keep tokens out of any new `Debug`
+  (D38).
+- List responses say how to page: Confluence `ResultsPage` carries
+  `start`/`limit`/`has_more`, Jira `AgilePage`/`SearchPage` carry `start_at`,
+  and every tool over them takes the matching offset argument.
+- Issue fields not modelled in `IssueFields` land in `extra` only when the
+  caller named them in `fields` (D35); `get_issue(key, None)` requests
+  `DEFAULT_ISSUE_FIELDS`, never everything.
+- Confluence section edits operate on storage XHTML via
+  `storage_markdown::replace_section` (D36); never round-trip a whole page
+  through Markdown to change part of it.
+- `to_mcp_error` picks the JSON-RPC code: what the caller can fix is
+  `invalid_params`, the rest `internal_error`, HTTP status in `data`.
 - Tests never hit real Atlassian instances; use wiremock + fixtures (D14).
 - A rule that must hold for every tool goes in `tests/every_tool.rs` as an
   enumeration over `tools/list`, not as one test per tool (D32). CI fails

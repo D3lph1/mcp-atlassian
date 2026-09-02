@@ -12,6 +12,7 @@ fn client(server: &MockServer) -> ConfluenceClient {
             username: "u@example.com".into(),
             token: "secret".into(),
         },
+        deployment: None,
     })
     .unwrap()
 }
@@ -185,4 +186,52 @@ async fn labels_roundtrip() {
 
     let labels = client(&server).add_label("123", "ops").await.unwrap();
     assert_eq!(labels.results[0].name, "ops");
+}
+
+#[tokio::test]
+async fn pages_report_where_they_are_and_whether_more_exist() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/wiki/rest/api/content/123/child/page"))
+        .and(query_param("limit", "2"))
+        .and(query_param("start", "4"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "results": [
+                { "id": "1", "title": "A", "type": "page" },
+                { "id": "2", "title": "B", "type": "page" }
+            ],
+            "start": 4, "limit": 2, "size": 2,
+            "_links": { "next": "/rest/api/content/123/child/page?start=6&limit=2" }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let page = client(&server)
+        .get_page_children("123", 2, 4)
+        .await
+        .unwrap();
+    assert_eq!((page.start, page.limit, page.size), (4, 2, 2));
+    assert!(page.has_more);
+
+    // The last page: no next link, fewer results than the limit.
+    let page: atlassian_confluence::ResultsPage<atlassian_confluence::Label> =
+        serde_json::from_value(json!({
+            "results": [{ "name": "ops" }], "start": 0, "limit": 25, "size": 1
+        }))
+        .unwrap();
+    assert!(!page.has_more);
+    // An envelope without `size` (some endpoints omit it) counts its results.
+    let page: atlassian_confluence::ResultsPage<atlassian_confluence::Label> =
+        serde_json::from_value(json!({ "results": [{ "name": "a" }, { "name": "b" }] })).unwrap();
+    assert_eq!(page.size, 2);
+    assert!(!page.has_more);
+    // No next link but a full page: assume more, because Confluence's
+    // link map is not always present.
+    let page: atlassian_confluence::ResultsPage<atlassian_confluence::Label> =
+        serde_json::from_value(json!({
+            "results": [{ "name": "a" }], "start": 0, "limit": 1, "size": 1
+        }))
+        .unwrap();
+    assert!(page.has_more);
 }

@@ -19,14 +19,10 @@ fn config(mock: &MockServer) -> Config {
                 username: "u@example.com".into(),
                 token: "t".into(),
             },
+            deployment: None,
         }),
         confluence: None,
-        enabled_tools: None,
-        disabled_tools: None,
-        read_only: false,
-        dry_run: false,
-        audit_log: None,
-        cache_ttl: None,
+        ..Config::default()
     }
 }
 
@@ -198,6 +194,7 @@ async fn prompts_of_an_unconfigured_product_are_absent() {
                 username: "u@example.com".into(),
                 token: "t".into(),
             },
+            deployment: None,
         }),
         ..config(&mock)
     };

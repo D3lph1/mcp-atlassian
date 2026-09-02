@@ -16,6 +16,7 @@ fn client(server: &MockServer) -> ConfluenceClient {
             username: "u@example.com".into(),
             token: "t".into(),
         },
+        deployment: None,
     })
     .unwrap()
 }

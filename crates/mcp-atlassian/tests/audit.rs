@@ -32,14 +32,11 @@ fn config(mock: &MockServer, audit_log: &Path) -> Config {
                 username: "u@example.com".into(),
                 token: "t".into(),
             },
+            deployment: None,
         }),
         confluence: None,
-        enabled_tools: None,
-        disabled_tools: None,
-        read_only: false,
-        dry_run: false,
         audit_log: Some(audit_log.to_path_buf()),
-        cache_ttl: None,
+        ..Config::default()
     }
 }
 
@@ -105,6 +102,16 @@ async fn write_tool_records_its_arguments_and_outcome() {
     assert!(ts.ends_with('Z') && ts.contains('T'), "bad timestamp: {ts}");
     // `jira_add_comment` is a write but not a destructive one.
     assert!(record["destructive"].is_null(), "{record}");
+    // What the write produced, so the line alone is enough to find it.
+    assert_eq!(record["result"], "10000");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            fs::metadata(&log).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
     fs::remove_file(&log).unwrap();
 }
 
@@ -235,14 +242,11 @@ fn an_unwritable_audit_path_fails_at_startup() {
                 username: "u@example.com".into(),
                 token: "t".into(),
             },
+            deployment: None,
         }),
         confluence: None,
-        enabled_tools: None,
-        disabled_tools: None,
-        read_only: false,
-        dry_run: false,
         audit_log: Some(PathBuf::from("/nonexistent-directory/audit.jsonl")),
-        cache_ttl: None,
+        ..Config::default()
     };
     let Err(error) = AtlassianServer::new(&config) else {
         panic!("the server started without a usable audit log");

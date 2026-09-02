@@ -6,7 +6,8 @@
 //! The one endpoint that diverges is search: Cloud removed `/rest/api/2/search`
 //! in favor of the token-paginated `/rest/api/2/search/jql`, while Server/DC
 //! still uses the offset-paginated original. Deployment is inferred from the
-//! auth mode: API token (Basic) => Cloud, PAT (Bearer) => Server/DC (D6).
+//! auth mode — API token (Basic) => Cloud, PAT (Bearer) => Server/DC (D6) —
+//! unless `JIRA_DEPLOYMENT` says otherwise (D41).
 
 mod models;
 
@@ -20,18 +21,27 @@ pub mod tools;
 use std::sync::Arc;
 use std::time::Duration;
 
-use atlassian_client::{AtlassianClient, Auth, Result, ServiceConfig, TtlCache};
+use atlassian_client::query::quote;
+use atlassian_client::{AtlassianClient, Deployment, Result, ServiceConfig, TtlCache, Upload};
 use serde_json::{json, Map, Value};
 
 pub use models::{
     AgilePage, Attachment, BatchCreateResult, Board, ChangelogEntry, ChangelogItem, Comment,
-    CommentPage, CreatedIssue, Field, FieldOption, FieldSchema, Issue, IssueFields, IssueType,
-    LinkType, Myself, Named, Project, SearchPage, Sprint, Transition, User, Watchers, Worklog,
-    WorklogEntry,
+    CommentPage, CreatedIssue, Field, FieldOption, FieldSchema, Issue, IssueFields, IssueLink,
+    IssueType, LinkType, LinkedIssue, LinkedIssueFields, Myself, Named, Project, RemoteLink,
+    SearchPage, Sprint, Transition, User, Watchers, Worklog, WorklogEntry,
 };
 
 /// Default fields requested by search — compact but useful for an LLM.
-const DEFAULT_SEARCH_FIELDS: &str = "summary,status,assignee,issuetype,priority,created,updated";
+pub const DEFAULT_SEARCH_FIELDS: &str =
+    "summary,status,assignee,issuetype,priority,created,updated";
+
+/// Default fields of a single issue: everything `IssueFields` models (D35).
+/// Naming them keeps the payload small — omitting `fields` would return every
+/// custom field the instance has.
+pub const DEFAULT_ISSUE_FIELDS: &str = "summary,description,status,priority,issuetype,resolution,\
+     assignee,reporter,labels,components,fixVersions,created,updated,duedate,parent,subtasks,\
+     issuelinks";
 
 #[derive(Debug, Clone)]
 pub struct JiraClient {
@@ -54,6 +64,17 @@ pub struct SearchParams {
     pub next_page_token: Option<String>,
 }
 
+/// Where [`JiraClient::get_field_options`] reads the options from.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FieldOptionsScope<'a> {
+    /// The edit screen of this issue. Takes precedence.
+    pub issue_key: Option<&'a str>,
+    /// The create screen of this project…
+    pub project_key: Option<&'a str>,
+    /// …for this issue type (name); the project's first type when absent.
+    pub issue_type: Option<&'a str>,
+}
+
 /// Parameters for [`JiraClient::create_issue`].
 #[derive(Debug, Clone, Default)]
 pub struct CreateIssueParams {
@@ -73,7 +94,7 @@ impl JiraClient {
     pub fn new(config: &ServiceConfig) -> Result<Self> {
         Ok(Self {
             client: AtlassianClient::new(config)?,
-            cloud: !matches!(config.auth, Auth::Pat { .. }),
+            cloud: config.deployment() == Deployment::Cloud,
             cache: None,
         })
     }
@@ -83,6 +104,12 @@ impl JiraClient {
     /// keeps going to Jira on every call (D25).
     pub fn with_cache(mut self, ttl: Duration) -> Self {
         self.cache = Some(Arc::new(TtlCache::new(ttl)));
+        self
+    }
+
+    /// Per-request timeout (`REQUEST_TIMEOUT`).
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.client = self.client.with_timeout(timeout);
         self
     }
 
@@ -115,22 +142,49 @@ impl JiraClient {
             ("fields", fields),
         ];
 
-        if self.cloud {
+        // A paging parameter of the other deployment is a mistake worth
+        // reporting, not one worth ignoring: the caller would otherwise get
+        // the first page again and conclude there is no second one.
+        if self.cloud && params.start_at.is_some() {
+            return Err(atlassian_client::Error::Config(
+                "start_at is Server/Data Center pagination; this is Jira Cloud — pass the \
+                 next_page_token from the previous page instead"
+                    .into(),
+            ));
+        }
+        if !self.cloud && params.next_page_token.is_some() {
+            return Err(atlassian_client::Error::Config(
+                "next_page_token is Jira Cloud pagination; this is Server/Data Center — pass \
+                 start_at instead"
+                    .into(),
+            ));
+        }
+
+        let mut page: SearchPage = if self.cloud {
             if let Some(token) = &params.next_page_token {
                 query.push(("nextPageToken", token));
             }
-            self.client.get("/rest/api/2/search/jql", &query).await
+            self.client.get("/rest/api/2/search/jql", &query).await?
         } else {
             let start_at = params.start_at.unwrap_or(0).to_string();
             query.push(("startAt", &start_at));
-            self.client.get("/rest/api/2/search", &query).await
+            self.client.get("/rest/api/2/search", &query).await?
+        };
+        for issue in &mut page.issues {
+            prune_extra(issue, fields);
         }
+        Ok(page)
     }
 
+    /// One issue. `fields` is Jira's comma-separated list; `None` requests
+    /// [`DEFAULT_ISSUE_FIELDS`]. Fields that `IssueFields` does not model —
+    /// custom fields, `*all` — are kept in `extra` when asked for by name.
     pub async fn get_issue(&self, key: &str, fields: Option<&str>) -> Result<Issue> {
         let path = format!("/rest/api/2/issue/{key}");
-        let query: Vec<(&str, &str)> = fields.map(|f| ("fields", f)).into_iter().collect();
-        self.client.get(&path, &query).await
+        let fields = fields.unwrap_or(DEFAULT_ISSUE_FIELDS);
+        let mut issue: Issue = self.client.get(&path, &[("fields", fields)]).await?;
+        prune_extra(&mut issue, fields);
+        Ok(issue)
     }
 
     pub async fn create_issue(&self, params: &CreateIssueParams) -> Result<CreatedIssue> {
@@ -201,15 +255,31 @@ impl JiraClient {
         self.client.post(&path, &json!({ "body": body })).await
     }
 
-    pub async fn get_comments(&self, key: &str, max_results: u32) -> Result<CommentPage> {
+    /// Comments, newest first. Cloud honours `orderBy=-created`; Server/DC
+    /// ignores it and answers oldest first, so the page is sorted here as
+    /// well — both deployments then match the tool's description.
+    pub async fn get_comments(
+        &self,
+        key: &str,
+        max_results: u32,
+        start_at: u32,
+    ) -> Result<CommentPage> {
         let path = format!("/rest/api/2/issue/{key}/comment");
         let max_results = max_results.to_string();
-        self.client
+        let start_at = start_at.to_string();
+        let mut page: CommentPage = self
+            .client
             .get(
                 &path,
-                &[("maxResults", &max_results), ("orderBy", "-created")],
+                &[
+                    ("maxResults", &max_results),
+                    ("startAt", &start_at),
+                    ("orderBy", "-created"),
+                ],
             )
-            .await
+            .await?;
+        page.comments.sort_by(|a, b| b.created.cmp(&a.created));
+        Ok(page)
     }
 
     /// `time_spent` uses Jira duration syntax ("2h", "1d 4h", "30m").
@@ -296,24 +366,44 @@ impl JiraClient {
         &self,
         board_id: u64,
         state: Option<&str>,
+        max_results: u32,
+        start_at: u32,
     ) -> Result<AgilePage<Sprint>> {
         let path = format!("/rest/agile/1.0/board/{board_id}/sprint");
-        let query: Vec<(&str, &str)> = state.map(|s| ("state", s)).into_iter().collect();
+        let max_results = max_results.to_string();
+        let start_at = start_at.to_string();
+        let mut query: Vec<(&str, &str)> =
+            vec![("maxResults", &max_results), ("startAt", &start_at)];
+        if let Some(state) = state {
+            query.push(("state", state));
+        }
         self.client.get(&path, &query).await
     }
 
-    pub async fn get_sprint_issues(&self, sprint_id: u64, max_results: u32) -> Result<SearchPage> {
+    pub async fn get_sprint_issues(
+        &self,
+        sprint_id: u64,
+        max_results: u32,
+        start_at: u32,
+    ) -> Result<SearchPage> {
         let path = format!("/rest/agile/1.0/sprint/{sprint_id}/issue");
         let max_results = max_results.to_string();
-        self.client
+        let start_at = start_at.to_string();
+        let mut page: SearchPage = self
+            .client
             .get(
                 &path,
                 &[
                     ("maxResults", &max_results),
+                    ("startAt", &start_at),
                     ("fields", DEFAULT_SEARCH_FIELDS),
                 ],
             )
-            .await
+            .await?;
+        for issue in &mut page.issues {
+            prune_extra(issue, DEFAULT_SEARCH_FIELDS);
+        }
+        Ok(page)
     }
 
     /// Moves issues into a sprint (max 50 per call, Agile API limit).
@@ -333,21 +423,43 @@ impl JiraClient {
         Ok(resp.fields.attachment)
     }
 
-    /// Downloads an attachment binary from its `content` URL (must be
-    /// same-origin with the configured Jira base URL).
-    pub async fn download_attachment(&self, content_url: &str) -> Result<Vec<u8>> {
-        self.client.get_bytes(content_url).await
+    /// Downloads an attachment's binary.
+    ///
+    /// The `content` URL Jira reports is used when it points at the configured
+    /// instance. Under OAuth it never does — the base is the
+    /// `api.atlassian.com` gateway while `content` names the site — so Cloud
+    /// falls back to the gateway's own `attachment/content/{id}` endpoint,
+    /// which answers with a redirect to the binary (D33).
+    pub async fn download_attachment(&self, attachment: &Attachment) -> Result<Vec<u8>> {
+        self.client
+            .get_bytes(&self.attachment_link(attachment))
+            .await
+    }
+
+    /// Streams an attachment into `path` (D37); returns the size written.
+    pub async fn download_attachment_to(
+        &self,
+        attachment: &Attachment,
+        path: &std::path::Path,
+        max_bytes: Option<u64>,
+    ) -> Result<u64> {
+        self.client
+            .download_to_file(&self.attachment_link(attachment), path, max_bytes)
+            .await
+    }
+
+    fn attachment_link(&self, attachment: &Attachment) -> String {
+        if !self.client.same_origin(&attachment.content) && self.cloud {
+            format!("/rest/api/2/attachment/content/{}", attachment.id)
+        } else {
+            attachment.content.clone()
+        }
     }
 
     /// Uploads one file as an attachment; returns the created attachment(s).
-    pub async fn upload_attachment(
-        &self,
-        key: &str,
-        file_name: &str,
-        bytes: Vec<u8>,
-    ) -> Result<Vec<Attachment>> {
+    pub async fn upload_attachment(&self, key: &str, upload: Upload) -> Result<Vec<Attachment>> {
         let path = format!("/rest/api/2/issue/{key}/attachments");
-        self.client.post_multipart(&path, file_name, bytes).await
+        self.client.post_multipart(&path, upload).await
     }
 
     // ---- Users and watchers ------------------------------------------------
@@ -436,24 +548,100 @@ impl JiraClient {
             .collect())
     }
 
-    /// Allowed values of a custom select-like field. Cloud exposes them
-    /// through the field context API; Server/DC through the field itself.
+    /// Allowed values of a select-like field, read from the screen that
+    /// would offer them (D34): the edit screen of `issue_key`, or the create
+    /// screen of `project_key` (+ `issue_type`, else the project's first).
+    /// Both work for any user on every deployment. With neither, Cloud falls
+    /// back to the field-context API, which needs Jira administration.
     pub async fn get_field_options(
         &self,
         field_id: &str,
+        scope: FieldOptionsScope<'_>,
         max_results: u32,
     ) -> Result<Vec<FieldOption>> {
-        let max_results = max_results.to_string();
-        let path = if self.cloud {
-            format!("/rest/api/2/field/{field_id}/option")
-        } else {
-            format!("/rest/api/2/customField/{field_id}/option")
+        let not_offered = |screen: String| {
+            atlassian_client::Error::Config(format!(
+                "field {field_id} is not on {screen}, or has no fixed set of values; \
+                 check the id with jira_search_fields"
+            ))
         };
-        let page: models::FieldOptionsPage = self
-            .client
-            .get(&path, &[("maxResults", &max_results)])
-            .await?;
-        Ok(page.values)
+        let mut options = if let Some(key) = scope.issue_key {
+            let path = format!("/rest/api/2/issue/{key}/editmeta");
+            let mut meta: models::EditMeta = self.client.get(&path, &[]).await?;
+            let field = meta
+                .fields
+                .remove(field_id)
+                .ok_or_else(|| not_offered(format!("the edit screen of {key}")))?;
+            let field: models::MetaField = serde_json::from_value(field)
+                .map_err(|e| atlassian_client::Error::Decode(e.to_string()))?;
+            field.allowed_values
+        } else if let Some(project) = scope.project_key {
+            let issue_type = self.create_issue_type(project, scope.issue_type).await?;
+            let path = format!(
+                "/rest/api/2/issue/createmeta/{project}/issuetypes/{}",
+                issue_type.id
+            );
+            let page: models::CreateMetaFields =
+                self.client.get(&path, &[("maxResults", "200")]).await?;
+            page.values
+                .into_iter()
+                .find(|f| f.field_id == field_id)
+                .ok_or_else(|| {
+                    not_offered(format!(
+                        "the create screen of {project} / {}",
+                        issue_type.name
+                    ))
+                })?
+                .allowed_values
+        } else if self.cloud {
+            let path = format!("/rest/api/2/field/{field_id}/context");
+            let contexts: models::FieldContextPage = self.client.get(&path, &[]).await?;
+            let context = contexts.values.into_iter().next().ok_or_else(|| {
+                atlassian_client::Error::Config(format!(
+                    "field {field_id} has no context; pass issue_key or project_key to read \
+                     its options from a screen instead"
+                ))
+            })?;
+            let path = format!("/rest/api/2/field/{field_id}/context/{}/option", context.id);
+            let max_results = max_results.to_string();
+            let page: models::FieldOptionsPage = self
+                .client
+                .get(&path, &[("maxResults", &max_results)])
+                .await?;
+            page.values
+        } else {
+            return Err(atlassian_client::Error::Config(
+                "on Server/Data Center pass issue_key, or project_key (and issue_type), so the \
+                 options can be read from that screen"
+                    .into(),
+            ));
+        };
+        options.truncate(max_results as usize);
+        Ok(options)
+    }
+
+    /// The issue type a create screen is looked up for: by name when given,
+    /// else the project's first.
+    async fn create_issue_type(&self, project: &str, name: Option<&str>) -> Result<IssueType> {
+        let path = format!("/rest/api/2/issue/createmeta/{project}/issuetypes");
+        let page: models::CreateMetaIssueTypes = self.client.get(&path, &[]).await?;
+        let names: Vec<&str> = page.values.iter().map(|t| t.name.as_str()).collect();
+        let found = match name {
+            Some(name) => page
+                .values
+                .iter()
+                .find(|t| t.name.eq_ignore_ascii_case(name)),
+            None => page.values.first(),
+        };
+        found.cloned().ok_or_else(|| {
+            atlassian_client::Error::Config(match name {
+                Some(name) => format!(
+                    "issue type `{name}` cannot be created in {project}; available: {}",
+                    names.join(", ")
+                ),
+                None => format!("no issue type can be created in {project}"),
+            })
+        })
     }
 
     // ---- Issue links -------------------------------------------------------
@@ -502,7 +690,7 @@ impl JiraClient {
         url: &str,
         title: &str,
         summary: Option<&str>,
-    ) -> Result<Value> {
+    ) -> Result<RemoteLink> {
         let path = format!("/rest/api/2/issue/{key}/remotelink");
         let mut object = json!({ "url": url, "title": title });
         if let Some(summary) = summary {
@@ -543,9 +731,16 @@ impl JiraClient {
         self.client.put(&path, &json!({ "body": body })).await
     }
 
-    pub async fn get_worklog(&self, key: &str) -> Result<Vec<WorklogEntry>> {
+    /// Worklog entries, oldest first. Cloud pages this endpoint; Server/DC
+    /// returns everything, so the cap is applied here too.
+    pub async fn get_worklog(&self, key: &str, max_results: u32) -> Result<Vec<WorklogEntry>> {
         let path = format!("/rest/api/2/issue/{key}/worklog");
-        let page: models::WorklogPage = self.client.get(&path, &[]).await?;
+        let max_results_param = max_results.to_string();
+        let mut page: models::WorklogPage = self
+            .client
+            .get(&path, &[("maxResults", &max_results_param)])
+            .await?;
+        page.worklogs.truncate(max_results as usize);
         Ok(page.worklogs)
     }
 
@@ -583,9 +778,12 @@ impl JiraClient {
         } else {
             let path = format!("/rest/api/2/issue/{key}");
             let issue: Value = self.client.get(&path, &[("expand", "changelog")]).await?;
-            let page: models::ChangelogPage =
+            let mut page: models::ChangelogPage =
                 serde_json::from_value(issue.get("changelog").cloned().unwrap_or(json!({})))
                     .map_err(|e| atlassian_client::Error::Decode(e.to_string()))?;
+            // `expand=changelog` has no page size; cap here so both
+            // deployments honour the argument the same way.
+            page.histories.truncate(max_results as usize);
             Ok(page.histories)
         }
     }
@@ -599,7 +797,7 @@ impl JiraClient {
         max_results: u32,
     ) -> Result<SearchPage> {
         self.search(&SearchParams {
-            jql: format!("project = \"{project_key}\" ORDER BY created DESC"),
+            jql: format!("project = {} ORDER BY created DESC", quote(project_key)),
             max_results,
             ..Default::default()
         })
@@ -612,17 +810,24 @@ impl JiraClient {
         board_id: u64,
         jql: Option<&str>,
         max_results: u32,
+        start_at: u32,
     ) -> Result<SearchPage> {
         let path = format!("/rest/agile/1.0/board/{board_id}/issue");
         let max_results = max_results.to_string();
+        let start_at = start_at.to_string();
         let mut params: Vec<(&str, &str)> = vec![
             ("maxResults", &max_results),
+            ("startAt", &start_at),
             ("fields", DEFAULT_SEARCH_FIELDS),
         ];
         if let Some(jql) = jql {
             params.push(("jql", jql));
         }
-        self.client.get(&path, &params).await
+        let mut page: SearchPage = self.client.get(&path, &params).await?;
+        for issue in &mut page.issues {
+            prune_extra(issue, DEFAULT_SEARCH_FIELDS);
+        }
+        Ok(page)
     }
 
     /// Cloud references users by account id, Server/DC by username (D5/D6).
@@ -635,6 +840,22 @@ impl JiraClient {
     }
 }
 
+/// Keeps in `extra` only what the caller asked for by name (D35).
+///
+/// `#[serde(flatten)]` collects every field `IssueFields` does not model.
+/// Jira answers a `fields` list with exactly those fields, so normally there
+/// is nothing to prune — but `*all` / `*navigable` bring the whole schema,
+/// most of it `null`, and the Agile endpoints add `sprint`, `epic` and friends
+/// unasked. A null is dropped either way: it says nothing the absence of the
+/// key does not.
+fn prune_extra(issue: &mut Issue, requested: &str) {
+    let requested: Vec<&str> = requested.split(',').map(str::trim).collect();
+    let everything = requested.iter().any(|f| f.starts_with('*'));
+    issue.fields.extra.retain(|name, value| {
+        !value.is_null() && (everything || requested.contains(&name.as_str()))
+    });
+}
+
 /// MCP tool state for Jira: the client the tools operate on.
 ///
 /// Tools are inherent methods on this type (`#[tool_router]` requires that),
@@ -645,15 +866,24 @@ impl JiraClient {
 #[derive(Debug, Clone)]
 pub struct JiraTools {
     client: std::sync::Arc<JiraClient>,
+    files: atlassian_client::mcp::FileAccess,
 }
 
 #[cfg(feature = "mcp")]
 impl JiraTools {
-    pub fn new(client: std::sync::Arc<JiraClient>) -> Self {
-        Self { client }
+    pub fn new(
+        client: std::sync::Arc<JiraClient>,
+        files: atlassian_client::mcp::FileAccess,
+    ) -> Self {
+        Self { client, files }
     }
 
     pub(crate) fn client(&self) -> &JiraClient {
         &self.client
+    }
+
+    /// Where the attachment tools may read and write (D37).
+    pub(crate) fn files(&self) -> &atlassian_client::mcp::FileAccess {
+        &self.files
     }
 }

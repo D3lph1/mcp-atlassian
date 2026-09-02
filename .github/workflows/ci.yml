@@ -37,7 +37,16 @@ jobs:
       # build rather than something noticed months later. Raise it when the
       # real number moves up; never lower it to make a red build green.
       - name: Coverage
-        run: cargo llvm-cov --all-features --workspace --summary-only --fail-under-lines 80
+        run: cargo llvm-cov --all-features --workspace --summary-only --fail-under-lines 85
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Advisories and licenses over the whole tree; the policy is deny.toml.
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories licenses bans sources
 
   musl-build:
     runs-on: ubuntu-latest

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 /// The authenticated user, from `GET /rest/api/2/myself`.
 ///
@@ -53,9 +53,13 @@ pub struct Issue {
     pub fields: IssueFields,
 }
 
-/// The subset of issue fields we expose to the LLM. Everything is optional —
-/// search responses only carry the fields that were requested (D4).
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+/// The issue fields exposed to the LLM: the standard ones, the structural
+/// ones a plan needs (parent, subtasks, links, versions), and — in `extra` —
+/// whatever else the caller asked for by name (D35).
+///
+/// Everything is optional: search responses only carry the fields that were
+/// requested (D4).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueFields {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -70,15 +74,73 @@ pub struct IssueFields {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issuetype: Option<Named>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<Named>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assignee: Option<User>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reporter: Option<User>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub labels: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub components: Vec<Named>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fix_versions: Vec<Named>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duedate: Option<String>,
+    /// The epic or parent issue (Cloud: `parent`; on Server/DC epics use the
+    /// `Epic Link` custom field, which lands in `extra` when requested).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<LinkedIssue>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subtasks: Vec<LinkedIssue>,
+    /// Typed links to other issues. `id` is what `jira_remove_issue_link`
+    /// takes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub issuelinks: Vec<IssueLink>,
+    /// Fields the caller asked for by name that are not modelled above —
+    /// custom fields (`customfield_10011`) and the rest of Jira's schema.
+    /// Only what was requested is kept, and nulls are dropped, so asking for
+    /// `*all` does not flood the context with a hundred empty fields.
+    #[serde(flatten, skip_serializing_if = "Map::is_empty")]
+    pub extra: Map<String, Value>,
+}
+
+/// Another issue referenced from an issue: a parent, a subtask, the far end
+/// of a link. Jira nests its summary and status under `fields`.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct LinkedIssue {
+    pub key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fields: Option<LinkedIssueFields>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct LinkedIssueFields {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<Named>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuetype: Option<Named>,
+}
+
+/// One entry of the `issuelinks` field. Exactly one of `inward_issue` /
+/// `outward_issue` is set: the *other* end of the link, phrased from this
+/// issue's side by `type.inward` or `type.outward`.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueLink {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub link_type: LinkType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inward_issue: Option<LinkedIssue>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outward_issue: Option<LinkedIssue>,
 }
 
 /// Unified search page over the Cloud (`/search/jql`, token-paginated) and
@@ -87,9 +149,13 @@ pub struct IssueFields {
 #[serde(rename_all = "camelCase")]
 pub struct SearchPage {
     pub issues: Vec<Issue>,
-    /// Server/DC only.
+    /// Server/DC and the Agile endpoints: total matches, for `start_at`
+    /// paging. Absent on Cloud JQL search.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total: Option<u64>,
+    /// Offset of the first issue, where offset paging applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_at: Option<u64>,
     /// Cloud only: pass back to continue pagination.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_page_token: Option<String>,
@@ -128,10 +194,15 @@ pub struct Comment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct CommentPage {
+    /// Newest first, on every deployment.
     pub comments: Vec<Comment>,
     #[serde(default)]
     pub total: u64,
+    /// Offset of the first comment, in the server's (oldest-first) order.
+    #[serde(default)]
+    pub start_at: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -219,6 +290,10 @@ pub struct Sprint {
 #[serde(rename_all = "camelCase")]
 pub struct AgilePage<T> {
     pub values: Vec<T>,
+    /// Offset of the first value; pass `start_at + values.len()` for the next
+    /// page while `is_last` is false.
+    #[serde(default)]
+    pub start_at: u64,
     #[serde(default)]
     pub is_last: bool,
 }
@@ -237,6 +312,7 @@ pub struct IssueType {
 /// "blocks" phrasing.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct LinkType {
+    #[serde(default)]
     pub id: String,
     pub name: String,
     #[serde(default)]
@@ -271,19 +347,65 @@ pub struct FieldSchema {
     pub custom: Option<String>,
 }
 
-/// One selectable option of a custom field.
+/// One allowed value of a field. Select options carry `value`; versions,
+/// components, priorities and the like carry `name` — both land in `value`.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FieldOption {
-    pub id: String,
     #[serde(default)]
+    pub id: String,
+    #[serde(default, alias = "name")]
     pub value: String,
 }
 
-/// Cloud paginates field options; Server/DC returns them inline on the field
-/// meta. `values` covers the Cloud envelope.
+/// Cloud's field-context option list: `{values: [{id, value}]}`.
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct FieldOptionsPage {
+    #[serde(default)]
     pub values: Vec<FieldOption>,
+}
+
+/// Cloud's `GET /field/{id}/context` envelope.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct FieldContextPage {
+    #[serde(default)]
+    pub values: Vec<FieldContext>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct FieldContext {
+    pub id: String,
+}
+
+/// `GET /issue/{key}/editmeta`: the editable fields keyed by id.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct EditMeta {
+    #[serde(default)]
+    pub fields: Map<String, Value>,
+}
+
+/// `GET /issue/createmeta/{project}/issuetypes/{type}`: the fields of the
+/// create screen, paginated.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct CreateMetaFields {
+    #[serde(default)]
+    pub values: Vec<MetaField>,
+}
+
+/// One field of an edit or create screen; only the allowed values matter.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MetaField {
+    #[serde(default)]
+    pub field_id: String,
+    #[serde(default)]
+    pub allowed_values: Vec<FieldOption>,
+}
+
+/// `GET /issue/createmeta/{project}/issuetypes`.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct CreateMetaIssueTypes {
+    #[serde(default)]
+    pub values: Vec<IssueType>,
 }
 
 /// One entry of an issue's change history.
@@ -350,6 +472,15 @@ pub struct WorklogEntry {
     pub started: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub comment: Option<String>,
+}
+
+/// A remote (external URL) link on an issue, as created.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct RemoteLink {
+    pub id: u64,
+    /// REST URL of the link, which is what a later delete would take.
+    #[serde(rename = "self", default)]
+    pub self_url: String,
 }
 
 /// Result of a batch create — Jira reports successes and failures separately.

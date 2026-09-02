@@ -20,7 +20,11 @@ use atlassian_client::mcp::{
 pub struct GetIssueArgs {
     /// Issue key, e.g. `PROJ-123`
     pub issue_key: String,
-    /// Comma-separated fields to include; omit for all fields.
+    /// Comma-separated Jira field ids to return. Omit for the standard set
+    /// (summary, description, status, priority, type, resolution, people,
+    /// labels, components, versions, dates, parent, subtasks, links). Name
+    /// custom fields to read them, e.g. `summary,customfield_10011`; `*all`
+    /// returns every non-empty field the issue has.
     pub fields: Option<String>,
 }
 
@@ -84,7 +88,7 @@ pub struct GetProjectIssuesArgs {
 #[tool_router(router = jira_issues_router, vis = "pub(crate)")]
 impl JiraTools {
     #[tool(
-        description = "Get a single Jira issue by key (e.g. PROJ-123) with full fields including description.",
+        description = "Get one Jira issue by key (e.g. PROJ-123): description, status, people, labels, parent, subtasks and issue links. Pass custom field ids in `fields` to read them (resolve ids with jira_search_fields).",
         annotations(read_only_hint = true)
     )]
     async fn jira_get_issue(

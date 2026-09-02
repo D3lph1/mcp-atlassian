@@ -12,6 +12,7 @@ fn jira_config() -> ServiceConfig {
             username: "u@example.com".into(),
             token: "t".into(),
         },
+        deployment: None,
     }
 }
 
@@ -22,6 +23,7 @@ fn confluence_config() -> ServiceConfig {
             username: "u@example.com".into(),
             token: "t".into(),
         },
+        deployment: None,
     }
 }
 
@@ -29,12 +31,7 @@ fn full_config() -> Config {
     Config {
         jira: Some(jira_config()),
         confluence: Some(confluence_config()),
-        enabled_tools: None,
-        disabled_tools: None,
-        read_only: false,
-        dry_run: false,
-        audit_log: None,
-        cache_ttl: None,
+        ..Config::default()
     }
 }
 

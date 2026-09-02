@@ -4,7 +4,7 @@
 //! jira_update_issue.
 
 use crate::JiraTools;
-use crate::{Field, FieldOption};
+use crate::{Field, FieldOption, FieldOptionsScope};
 use rmcp::{
     handler::server::wrapper::{Json, Parameters},
     schemars, tool, tool_router, ErrorData as McpError,
@@ -24,7 +24,15 @@ pub struct SearchFieldsArgs {
 pub struct GetFieldOptionsArgs {
     /// Field id from jira_search_fields, e.g. `customfield_10011`.
     pub field_id: String,
-    /// Max options to return (default 50).
+    /// Read the options as offered when editing this issue, e.g. `PROJ-123`.
+    /// Preferred: works for any user on every deployment.
+    pub issue_key: Option<String>,
+    /// Read the options as offered when creating an issue in this project.
+    pub project_key: Option<String>,
+    /// Issue type name for `project_key`, e.g. `Bug`; the project's first
+    /// type when omitted.
+    pub issue_type: Option<String>,
+    /// Max options to return (default 50, cap 50).
     pub max_results: Option<u32>,
 }
 
@@ -47,7 +55,7 @@ impl JiraTools {
     }
 
     #[tool(
-        description = "List the allowed values of a select-style custom field (select, multi-select, radio, checkbox). Use it to pick a valid option before writing to the field.",
+        description = "List the allowed values of a select-style field (select, multi-select, radio, checkbox, priority, version, component). Pass issue_key when about to edit an issue, or project_key (+ issue_type) when about to create one; without either only Jira Cloud administrators get an answer. Use it to pick a valid option before writing to the field.",
         annotations(read_only_hint = true)
     )]
     async fn jira_get_field_options(
@@ -56,7 +64,15 @@ impl JiraTools {
     ) -> Result<Json<ListResult<FieldOption>>, McpError> {
         let options = self
             .client()
-            .get_field_options(&args.field_id, page_size(args.max_results, 50))
+            .get_field_options(
+                &args.field_id,
+                FieldOptionsScope {
+                    issue_key: args.issue_key.as_deref(),
+                    project_key: args.project_key.as_deref(),
+                    issue_type: args.issue_type.as_deref(),
+                },
+                page_size(args.max_results, 50),
+            )
             .await
             .map_err(to_mcp_error)?;
         list_result(options)

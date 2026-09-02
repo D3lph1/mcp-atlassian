@@ -14,12 +14,6 @@ use crate::JiraTools;
 /// URI prefix this product answers for.
 pub const URI_PREFIX: &str = "jira://";
 
-/// Exactly the fields `IssueFields` models (D4). Naming them keeps the
-/// payload small — omitting `fields` would return every custom field the
-/// instance has.
-const RESOURCE_FIELDS: &str =
-    "summary,description,status,priority,issuetype,assignee,reporter,labels,created,updated";
-
 /// The URI templates Jira contributes to `resources/templates/list`.
 pub fn templates() -> Vec<ResourceTemplate> {
     vec![ResourceTemplate::new("jira://{issue_key}", "jira-issue")
@@ -37,7 +31,7 @@ impl JiraTools {
         let key = issue_key(uri)?;
         let issue = self
             .client()
-            .get_issue(key, Some(RESOURCE_FIELDS))
+            .get_issue(key, None)
             .await
             .map_err(to_mcp_error)?;
         let text = serde_json::to_string_pretty(&issue).map_err(|e| {

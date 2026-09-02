@@ -216,14 +216,10 @@ mod tests {
             jira: Some(ServiceConfig {
                 base_url: "https://example.atlassian.net".into(),
                 auth: Auth::Pat { token: "t".into() },
+                deployment: None,
             }),
             confluence: None,
-            enabled_tools: None,
-            disabled_tools: None,
-            read_only: false,
-            dry_run: false,
-            audit_log: None,
-            cache_ttl: None,
+            ..Config::default()
         }
     }
 

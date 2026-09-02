@@ -17,6 +17,7 @@ fn service(mock: &MockServer) -> ServiceConfig {
             username: "u@example.com".into(),
             token: "t".into(),
         },
+        deployment: None,
     }
 }
 
@@ -24,12 +25,7 @@ fn config(mock: &MockServer) -> Config {
     Config {
         jira: Some(service(mock)),
         confluence: Some(service(mock)),
-        enabled_tools: None,
-        disabled_tools: None,
-        read_only: false,
-        dry_run: false,
-        audit_log: None,
-        cache_ttl: None,
+        ..Config::default()
     }
 }
 
@@ -102,10 +98,7 @@ async fn reading_an_issue_returns_json_with_the_key_case_preserved() {
     Mock::given(method("GET"))
         .and(path("/rest/api/2/issue/PROJ-123"))
         // The field list is explicit, so the response stays small (D4).
-        .and(query_param(
-            "fields",
-            "summary,description,status,priority,issuetype,assignee,reporter,labels,created,updated",
-        ))
+        .and(query_param("fields", atlassian_jira::DEFAULT_ISSUE_FIELDS))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "10001",
             "key": "PROJ-123",

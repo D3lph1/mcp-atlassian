@@ -7,6 +7,7 @@ fn config(server: &MockServer, auth: Auth) -> ServiceConfig {
     ServiceConfig {
         base_url: server.uri(),
         auth,
+        deployment: None,
     }
 }
 

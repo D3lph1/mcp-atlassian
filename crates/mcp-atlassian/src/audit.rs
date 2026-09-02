@@ -45,6 +45,11 @@ struct Entry<'a> {
     outcome: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// What the write produced, when the result names it: the issue key of a
+    /// create, the id of a page or comment. Enough to find or undo it from
+    /// the log alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<String>,
     duration_ms: u64,
     /// Mirrors `destructiveHint`; present only when true, so `grep` finds the
     /// deletes and status changes without a JSON parser.
@@ -64,7 +69,16 @@ impl AuditLog {
     /// Opens (or creates) the log for appending. `dry_run` marks every record
     /// this log will write as an intercepted call.
     pub fn open(path: &Path, dry_run: bool) -> std::io::Result<Self> {
-        let file = OpenOptions::new().create(true).append(true).open(path)?;
+        let mut options = OpenOptions::new();
+        options.create(true).append(true);
+        // The arguments hold whatever the client sent — comment bodies, page
+        // content — so a file this process creates is owner-only (D23).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options.open(path)?;
         Ok(Self {
             file: Arc::new(Mutex::new(file)),
             path: Arc::new(path.to_path_buf()),
@@ -88,6 +102,7 @@ impl AuditLog {
             args: &args.unwrap_or_default(),
             outcome,
             error,
+            result: result_of(result),
             duration_ms: elapsed.as_millis() as u64,
             destructive,
             dry_run: self.dry_run,
@@ -140,6 +155,26 @@ fn outcome_of(result: &Result<CallToolResponse, ErrorData>) -> (&'static str, Op
         // a completed write, so treat it like the other pending outcomes.
         _ => ("pending", None),
     }
+}
+
+/// The identifier a successful write reported, if its structured result
+/// carries one at the top level: `key` (a created issue) before `id` (a
+/// page, a comment, a remote link).
+fn result_of(result: &Result<CallToolResponse, ErrorData>) -> Option<String> {
+    let Ok(CallToolResponse::Complete(result)) = result else {
+        return None;
+    };
+    if result.is_error == Some(true) {
+        return None;
+    }
+    let structured = result.structured_content.as_ref()?;
+    ["key", "id"]
+        .iter()
+        .find_map(|name| match structured.get(name)? {
+            Value::String(s) => Some(s.clone()),
+            Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        })
 }
 
 /// Wraps every write route of `router` so its calls are appended to `log`.

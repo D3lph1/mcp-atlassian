@@ -387,7 +387,7 @@ Two smaller decisions worth keeping:
 
 Both products keep their resource code next to their tools
 (`src/resources.rs`), and the server crate only dispatches on the scheme — the
-same split as D15/D21, and it stays true for a third product.
+same split as D15/D21.
 
 ## D25. TTL cache: opt-in, reference data only
 `CACHE_TTL=300` (seconds) caches the answers that describe the *instance*
@@ -711,3 +711,198 @@ Coverage went 62.6% → 83.0% by line, tool wrappers 13.9% → 72.4%, for two
 tests. CI now fails under 80% (`cargo llvm-cov --fail-under-lines`). The floor
 is a ratchet: raise it when the number rises, never lower it to make a red
 build green.
+
+## D33. A link the API returned is not a model-composed identifier
+D31 checks every request path for `?`, `#` and `..` because the values in it
+come from the model. That check was also applied to attachment download
+links, which come from Atlassian: Confluence's `_links.download` always
+carries `?version=…&api=v2`, so `confluence_download_attachment` refused
+every real download while the fixture — written without a query string —
+stayed green.
+
+The two inputs get the two rules they need. `AtlassianClient::request` keeps
+the identifier check. `get_bytes` takes a link the API returned, resolves a
+relative one against the base (query intact) and enforces one thing: an
+absolute link must share the base URL's origin, because the request carries
+the user's credentials.
+
+Origin is also why Jira downloads under OAuth could not work: the base is the
+`api.atlassian.com/ex/jira/{cloud_id}` gateway and the `content` URL names the
+site. `JiraClient::download_attachment` now takes the attachment, uses
+`content` when it is same-origin, and otherwise (Cloud only) asks the gateway's
+own `/rest/api/2/attachment/content/{id}`, which redirects to the binary. The
+fixture now has the query string; the test failed first.
+
+## D34. Field options come from the screen that offers them
+`jira_get_field_options` called `/field/{id}/option`, which on Cloud serves
+only options of Connect/Forge-provided fields, and a `/customField/{id}/option`
+path that Server/DC does not have. Neither answered for an ordinary select
+field.
+
+The options a user can pick are whatever the edit or create screen offers,
+and Jira exposes exactly that without administrator rights on every
+deployment: `GET /issue/{key}/editmeta` (`fields[id].allowedValues`) and
+`GET /issue/createmeta/{project}/issuetypes/{type}` (`values[].allowedValues`,
+Cloud and DC ≥ 8.4). The tool takes `issue_key`, or `project_key` with an
+optional `issue_type` (name; the project's first type otherwise), and reads
+from that screen. Without either, Cloud falls back to the field-context API
+(`/field/{id}/context` → `/context/{ctx}/option`), which needs Administer
+Jira; Server/DC says which argument to pass. `allowedValues` entries spell
+their label `value` (select options) or `name` (priorities, versions,
+components); both land in `FieldOption.value`.
+
+Verified against the documented response shapes with wiremock; not yet
+against a live instance — the one endpoint worth confirming first is the
+createmeta per-issue-type path on an older DC.
+
+## D35. An issue carries its structure, and the custom fields asked for
+`IssueFields` modelled ten fields and the tool promised "full fields". The
+`fields` argument let the model ask for `customfield_10011` or `issuelinks`,
+and serde dropped both without a word — `jira_remove_issue_link` even told
+the model to take the link id "from the `issuelinks` field of
+`jira_get_issue`", which nothing returned.
+
+Two additions, D4 intact:
+
+- **Structure is modelled.** `parent`, `subtasks`, `issuelinks` (with the
+  link `id` and the far issue's key, summary and status), `components`,
+  `fix_versions`, `resolution`, `duedate`. These are what a plan needs and
+  what an LLM cannot guess.
+- **The rest is `extra`, kept only when asked for.** `#[serde(flatten)]`
+  collects the unmodelled fields; `prune_extra` then keeps those the caller
+  named (or all of them under `*all` / `*navigable`) and drops nulls. Without
+  the pruning the Agile endpoints' unasked `sprint`/`epic` and a `*all` of a
+  hundred empty custom fields would flood the context; with it, a model that
+  resolved `customfield_10011` through `jira_search_fields` can read it.
+
+`get_issue(key, None)` requests `DEFAULT_ISSUE_FIELDS` — everything the
+struct models — rather than everything the instance has. The `jira://`
+resource used to carry its own copy of that list; there is now one.
+
+## D36. Section edits happen on the storage document
+`confluence_update_page_section` converted the whole page to Markdown,
+spliced the new section in, and converted the whole page back. D10 says
+what reading does to a macro — it degrades to its text — so editing one
+section silently rewrote every other section without its code blocks, panels,
+page links and images. The tool's description promised "leaving the rest of
+the page untouched".
+
+`storage_markdown::replace_section` now finds `<hN>…</hN>` in the storage
+XHTML, takes the run up to the next heading of level ≤ N, and replaces only
+that slice. The bytes outside it are the bytes Confluence sent. The
+replacement is converted from Markdown on its own, which is the only part
+that ever needed converting. Heading text is compared after tags are
+stripped, entities decoded and whitespace collapsed, so the heading the
+model read in Markdown matches the one in storage. A heading inside a macro
+body (expand, panel) is matched like any other, which is the one shape this
+cannot edit safely; the tool says so.
+
+Two smaller conversion fixes landed with it, because the section path made
+them visible: fenced code blocks become `code` macros (and `code` macros
+become fenced blocks with their language) instead of `<pre>`, and raw HTML
+in Markdown passes through comrak — the input is the model writing to the
+user's own instance, and stripping a hand-written macro to a comment helps
+nobody. CommonMark forbids `:` in a tag name, so `<ac:…>`/`<ri:…>` are
+spelled with a `-` while comrak looks at them and restored afterwards.
+
+## D37. Attachment tools are sandboxed to `ATTACHMENT_DIR`, streamed and capped
+D31 fixed the annotation of the download tools; the capability behind them
+was still unbounded. `save_path` could be any path the process can write —
+`~/.ssh/authorized_keys` — and `file_path` any file it can read, uploaded to
+whatever Jira the credentials reach. Both take one prompt injection.
+
+`ATTACHMENT_DIR` names the one directory the attachment tools may read from
+and write to. Paths are canonicalised before the check, so `..` and symlinks
+cannot lead out; a relative path is taken under the directory; an existing
+symlink at `save_path` is refused rather than followed, and so is a
+directory. Unset means the whole filesystem, as before — and the server says
+so at startup, at WARN, whenever an attachment tool is registered. The
+default stays open because the common deployment is a developer's own
+machine, where "any path" is what they asked for; the warning is there so
+that a container deployment does not stay open by accident.
+
+`MAX_ATTACHMENT_BYTES` (default 50 MB, `0` for none) caps both directions.
+Downloads stream from the socket to the file one chunk at a time and stop —
+removing the partial file — at the limit; uploads are checked by size before
+they are opened, then streamed with a `Content-Length`. Before this a 200 MB
+attachment was held in memory twice by a server whose target is 30 MB.
+The two helpers live in `atlassian_client::mcp::FileAccess` and are handed to
+each product's tool state; a product cannot write a file without going
+through them.
+
+## D38. `Debug` never prints a credential
+`Auth` derived `Debug`, so a `{:?}` of the configuration — in a log line, a
+panic, a failing assertion — would print the API token or PAT. Nothing did
+that, which is the kind of guarantee that lasts until someone writes
+`tracing::debug!(?config)`. `Auth` now writes its own `Debug`: the variant,
+the username, and `<redacted>` where the token is. A test formats a full
+`Config` and asserts the tokens are absent. `OAuthSession` already did this.
+
+## D39. The HTTP transport can require a bearer token
+D18 delegated authentication to a reverse proxy, and still does for TLS. But
+`HOST=0.0.0.0` without a proxy made the server an open write proxy to the
+configured Atlassian account, and the cost of a token check is twenty
+lines. `MCP_BEARER_TOKEN` (or `_FILE`) makes every `/mcp` request carry
+`Authorization: Bearer …`; the comparison is constant-time; a mismatch is
+`401` with `WWW-Authenticate: Bearer` and never reaches the protocol layer.
+`/healthz` is exempt — it answers `ok` without touching Atlassian, so a
+liveness probe needs no secret and cannot be used to probe one. Binding to a
+non-loopback address without a token is logged at WARN. The transport also
+stops cleanly on SIGTERM / Ctrl-C now, which is what `docker stop` sends.
+
+Every variable the server reads moved into `Config` with this: `TRANSPORT`,
+`HOST`, `PORT`, `ALLOWED_HOSTS` and `NO_BANNER` were read in `main.rs`, the
+rest in `config.rs`, so a bad `TRANSPORT` failed after the clients were
+built and the banner could not print the bind address. `Config::read` takes
+an `Env` — the process environment in `main`, a map in tests — which is what
+made the configuration matrix testable end to end for the first time.
+
+## D40. Retries are bounded and only for what is safe to replay
+One retry on 429 was the whole policy. A connection reset, a timeout, a 503
+from a gateway restart each surfaced as a failed tool call, and the model
+retried it — with a fresh reasoning step in between. `AtlassianClient::send`
+now retries up to twice with a short backoff (500 ms, 1 s): a 429 for any
+method after `Retry-After`, because the request was refused, not performed;
+transport failures and 502/503/504 for GET only, because a POST that timed
+out may have landed. Uploads are streamed and not cloneable, so they are
+never retried. `REQUEST_TIMEOUT` (default 30 s) is per request; downloads
+and uploads get ten times it.
+
+All product clients now share one `reqwest::Client`. Each client parses the
+compiled-in root store and keeps its own pool, and there were three — one
+per service, one for OAuth. Timeouts are per request, so the shared client
+carries no configuration.
+
+A rotated OAuth refresh token is written back to the `*_FILE` it was read
+from, owner-only, via a temporary file and rename, so a restart does not
+begin with the token Atlassian just revoked (the D17 limitation). Inline
+tokens stay in memory only; there is nowhere safe to write them.
+
+## D41. Deployment is inferred from auth, and can be said outright
+D16 infers Cloud or Server/Data Center from the auth mode, and records its
+limitation: Data Center behind Basic auth is unsupported. That deployment is
+real — PATs disabled by policy, or Jira older than 8.14 — and the failure
+mode is quiet: Basic means Cloud, Cloud means `/rest/api/2/search/jql`, and
+DC answers 404.
+
+`JIRA_DEPLOYMENT` and `CONFLUENCE_DEPLOYMENT` (`cloud` | `server`, also
+`datacenter`/`dc`) say which it is; unset keeps the inference exactly as it
+was. Both clients read `ServiceConfig::deployment()`, so there is one place
+that decides. OAuth is always Cloud.
+
+Confluence had no notion of deployment at all. `restriction_entry` sent both
+`accountId` and `username` for every user and let the server pick; it now
+sends the one the deployment expects. The flag is also the hook for what is
+coming: Atlassian is moving Confluence Cloud to `/wiki/api/v2/…` and has
+announced the sunset of parts of `/rest/api/content`. When that lands, each
+affected method grows a `match self.cloud` with the v2 path and shape on the
+Cloud arm — an edit per endpoint rather than a rewrite, and Server/DC stays
+on v1 untouched. Not done ahead of time: a `match` whose two arms are the
+same is noise, and the v2 shapes are not settled.
+
+Two smaller things landed in the same phase because the measurement in
+phase 7 asked for them: `RUST_LOG` is read through `Config` like every other
+variable and parsed with `tracing_subscriber::filter::Targets`, which takes
+the same `crate=level` directives as `EnvFilter` without the regex crates
+behind it; and the route filtering in `AtlassianServer::new` is one pass over
+`tools/list` instead of three.

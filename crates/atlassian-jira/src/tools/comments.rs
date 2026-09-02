@@ -22,8 +22,11 @@ pub struct AddCommentArgs {
 pub struct GetCommentsArgs {
     /// Issue key, e.g. `PROJ-123`
     pub issue_key: String,
-    /// Max comments to return, newest first (default 10).
+    /// Max comments to return, newest first (default 10, cap 50).
     pub max_results: Option<u32>,
+    /// Offset into the issue's comments for paging; compare `start_at +
+    /// comments.len()` with `total`.
+    pub start_at: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -51,6 +54,8 @@ pub struct EditCommentArgs {
 pub struct GetWorklogArgs {
     /// Issue key, e.g. `PROJ-123`
     pub issue_key: String,
+    /// Max entries to return (default 25, cap 50).
+    pub max_results: Option<u32>,
 }
 
 #[tool_router(router = jira_comments_router, vis = "pub(crate)")]
@@ -81,7 +86,12 @@ impl JiraTools {
     ) -> Result<Json<CommentPage>, McpError> {
         let comments = self
             .client()
-            .get_comments(&args.issue_key, page_size(args.max_results, 10))
+            .get_comments(
+                &args.issue_key,
+                page_size(args.max_results, 10),
+                // An offset, not a page size — capping it would cap paging.
+                args.start_at.unwrap_or(0),
+            )
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(comments))
@@ -134,7 +144,7 @@ impl JiraTools {
     ) -> Result<Json<ListResult<WorklogEntry>>, McpError> {
         let entries = self
             .client()
-            .get_worklog(&args.issue_key)
+            .get_worklog(&args.issue_key, page_size(args.max_results, 25))
             .await
             .map_err(to_mcp_error)?;
         list_result(entries)

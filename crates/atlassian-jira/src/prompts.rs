@@ -53,7 +53,7 @@ impl JiraTools {
             .map_err(to_mcp_error)?;
         // Comments are a separate endpoint, and an issue with none is normal —
         // a failure here should not lose the briefing that already succeeded.
-        let comments = match self.client().get_comments(key, COMMENTS).await {
+        let comments = match self.client().get_comments(key, COMMENTS, 0).await {
             Ok(page) => page.comments,
             Err(error) => {
                 tracing::debug!(%key, %error, "comments unavailable for the issue briefing");
@@ -91,6 +91,22 @@ fn brief(issue: &Issue, comments: &[Comment]) -> String {
     ));
     if !fields.labels.is_empty() {
         out.push_str(&format!("Labels: {}\n", fields.labels.join(", ")));
+    }
+    if let Some(parent) = &fields.parent {
+        out.push_str(&format!("Parent: {}\n", linked(parent)));
+    }
+    if !fields.subtasks.is_empty() {
+        let subtasks: Vec<String> = fields.subtasks.iter().map(linked).collect();
+        out.push_str(&format!("Subtasks: {}\n", subtasks.join("; ")));
+    }
+    for link in &fields.issuelinks {
+        // Phrase the link from this issue's side: "blocks PROJ-3".
+        let (verb, other) = match (&link.outward_issue, &link.inward_issue) {
+            (Some(other), _) => (&link.link_type.outward, other),
+            (None, Some(other)) => (&link.link_type.inward, other),
+            (None, None) => continue,
+        };
+        out.push_str(&format!("Link: {verb} {}\n", linked(other)));
     }
     if let Some(updated) = &fields.updated {
         out.push_str(&format!("Updated: {updated}\n"));
@@ -147,6 +163,20 @@ fn nobody(value: Option<&str>) -> &str {
     value.unwrap_or("unassigned")
 }
 
+/// `PROJ-9 (Epic, In Progress)` — enough to know whether to look at it.
+fn linked(issue: &crate::models::LinkedIssue) -> String {
+    let fields = issue.fields.as_ref();
+    let summary = fields.and_then(|f| f.summary.as_deref());
+    let status = fields
+        .and_then(|f| f.status.as_ref())
+        .map(|s| s.name.as_str());
+    match (summary, status) {
+        (Some(summary), Some(status)) => format!("{} ({summary}, {status})", issue.key),
+        (Some(summary), None) => format!("{} ({summary})", issue.key),
+        _ => issue.key.clone(),
+    }
+}
+
 /// Cuts on a character boundary and says so — a silently clipped description
 /// reads as a complete one.
 fn truncate(text: &str, max: usize) -> String {
@@ -194,6 +224,7 @@ mod tests {
                 labels: vec!["backend".into(), "performance".into()],
                 created: Some("2026-08-01T10:00:00.000+0000".into()),
                 updated: Some("2026-09-01T12:00:00.000+0000".into()),
+                ..Default::default()
             },
         }
     }

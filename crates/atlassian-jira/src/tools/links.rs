@@ -2,7 +2,7 @@
 //! (external URL) links.
 
 use crate::JiraTools;
-use crate::LinkType;
+use crate::{LinkType, RemoteLink};
 use rmcp::{
     handler::server::wrapper::{Json, Parameters},
     schemars, tool, tool_router, ErrorData as McpError,
@@ -26,7 +26,8 @@ pub struct CreateIssueLinkArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveIssueLinkArgs {
-    /// Link id (from the `issuelinks` field of jira_get_issue).
+    /// Link id: the `id` of an entry in the `issuelinks` field of
+    /// jira_get_issue.
     pub link_id: String,
 }
 
@@ -106,7 +107,7 @@ impl JiraTools {
     async fn jira_create_remote_link(
         &self,
         Parameters(args): Parameters<CreateRemoteLinkArgs>,
-    ) -> Result<Json<serde_json::Value>, McpError> {
+    ) -> Result<Json<RemoteLink>, McpError> {
         let link = self
             .client()
             .create_remote_issue_link(

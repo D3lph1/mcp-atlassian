@@ -23,14 +23,12 @@ fn config(mock: &MockServer, dry_run: bool, audit_log: Option<PathBuf>) -> Confi
                 username: "u@example.com".into(),
                 token: "t".into(),
             },
+            deployment: None,
         }),
         confluence: None,
-        enabled_tools: None,
-        disabled_tools: None,
-        read_only: false,
         dry_run,
         audit_log,
-        cache_ttl: None,
+        ..Config::default()
     }
 }
 

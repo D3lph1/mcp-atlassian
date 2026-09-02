@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::audit::{instrument_writes, AuditLog};
 use crate::dry_run::intercept_writes;
 use crate::router_ext::{project_prompt_router, project_router};
+use atlassian_client::mcp::FileAccess;
 use atlassian_client::Config;
 use atlassian_confluence::{ConfluenceClient, ConfluenceTools};
 use atlassian_jira::{JiraClient, JiraTools};
@@ -43,27 +44,34 @@ pub struct AtlassianServer {
 
 impl AtlassianServer {
     pub fn new(config: &Config) -> atlassian_client::Result<Self> {
+        // Where the attachment tools may touch the filesystem (D37).
+        let files = FileAccess::new(
+            config.attachment_dir.as_deref(),
+            config.max_attachment_bytes,
+        )?;
         // Reference data is cached only when a TTL is configured (D25).
         let jira = config
             .jira
             .as_ref()
             .map(JiraClient::new)
             .transpose()?
+            .map(|client| client.with_timeout(config.request_timeout))
             .map(|client| match config.cache_ttl {
                 Some(ttl) => client.with_cache(ttl),
                 None => client,
             })
-            .map(|client| JiraTools::new(Arc::new(client)));
+            .map(|client| JiraTools::new(Arc::new(client), files.clone()));
         let confluence = config
             .confluence
             .as_ref()
             .map(ConfluenceClient::new)
             .transpose()?
+            .map(|client| client.with_timeout(config.request_timeout))
             .map(|client| match config.cache_ttl {
                 Some(ttl) => client.with_cache(ttl),
                 None => client,
             })
-            .map(|client| ConfluenceTools::new(Arc::new(client)));
+            .map(|client| ConfluenceTools::new(Arc::new(client), files.clone()));
 
         // Product routers are defined over each product's own state; project
         // them onto this server (see `router_ext`). Projection is infallible
@@ -79,43 +87,36 @@ impl AtlassianServer {
                     .as_ref()
                     .expect("confluence tools pruned when unconfigured")
             });
-        // A tool counts as read-only only if it says so through its MCP
-        // annotation. Anything unannotated is treated as a write — a new tool
-        // cannot silently slip into READ_ONLY by omission.
-        let read_only_tools: std::collections::HashSet<String> = tool_router
-            .list_all()
-            .into_iter()
-            .filter(|t| {
-                t.annotations
-                    .as_ref()
-                    .and_then(|a| a.read_only_hint)
-                    .unwrap_or(false)
-            })
-            .map(|t| t.name.to_string())
-            .collect();
-        let all_names: Vec<String> = tool_router
-            .list_all()
-            .into_iter()
-            .map(|t| t.name.to_string())
-            .collect();
-        for name in &all_names {
+        // One pass over the routes decides what stays. A tool counts as
+        // read-only only if it says so through its MCP annotation; anything
+        // unannotated is treated as a write — a new tool cannot silently slip
+        // into READ_ONLY by omission.
+        let mut all_names = Vec::new();
+        for tool in tool_router.list_all() {
+            let name = tool.name.to_string();
+            let read_only = tool
+                .annotations
+                .as_ref()
+                .and_then(|a| a.read_only_hint)
+                .unwrap_or(false);
             let unconfigured_service = (jira.is_none() && name.starts_with("jira_"))
                 || (confluence.is_none() && name.starts_with("confluence_"));
-            let read_only_write = config.read_only && !read_only_tools.contains(name);
+            let read_only_write = config.read_only && !read_only;
             let not_allowlisted = config
                 .enabled_tools
                 .as_ref()
-                .is_some_and(|allow| !allow.matches(name));
+                .is_some_and(|allow| !allow.matches(&name));
             // The denylist is subtracted last and wins over the allowlist: a
             // tool named by both is removed, so `jira_*` plus
             // `*_delete_*` reads the way it looks.
             let denied = config
                 .disabled_tools
                 .as_ref()
-                .is_some_and(|deny| deny.matches(name));
+                .is_some_and(|deny| deny.matches(&name));
             if unconfigured_service || read_only_write || not_allowlisted || denied {
-                tool_router.remove_route(name);
+                tool_router.remove_route(&name);
             }
+            all_names.push(name);
         }
         // A pattern that matches nothing does nothing, and a typo in a wildcard
         // looks exactly like a deliberately narrow filter.
@@ -176,6 +177,14 @@ impl AtlassianServer {
             .into_iter()
             .map(|t| t.name.to_string())
             .collect();
+        if !files.is_restricted() && registered.iter().any(|n| n.contains("_attachment")) {
+            // Said once, at startup, where an operator reads: the model can
+            // name any path the process can reach.
+            tracing::warn!(
+                "ATTACHMENT_DIR is not set: the attachment tools may read from and write to any \
+                 path this process can reach"
+            );
+        }
         let jira_available = jira.is_some() && registered.iter().any(|n| n.starts_with("jira_"));
         let confluence_available =
             confluence.is_some() && registered.iter().any(|n| n.starts_with("confluence_"));

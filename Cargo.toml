@@ -15,21 +15,25 @@ license = "MIT"
 repository = "https://github.com/d3lph1/mcp-atlassian"
 
 [workspace.dependencies]
-atlassian-client = { path = "crates/atlassian-client" }
-atlassian-jira = { path = "crates/atlassian-jira" }
-atlassian-confluence = { path = "crates/atlassian-confluence" }
-storage-markdown = { path = "crates/storage-markdown" }
+atlassian-client = { path = "crates/atlassian-client", version = "0.1.0" }
+atlassian-jira = { path = "crates/atlassian-jira", version = "0.1.0" }
+atlassian-confluence = { path = "crates/atlassian-confluence", version = "0.1.0" }
+storage-markdown = { path = "crates/storage-markdown", version = "0.1.0" }
 
 anyhow = "1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "multipart"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "multipart", "stream"] }
+# Both already in the tree via reqwest/hyper — streaming attachments (D37).
+tokio-util = { version = "0.7", default-features = false, features = ["io"] }
+futures-util = { version = "0.3", default-features = false }
 tokio = { version = "1", default-features = false }
 url = "2"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-rmcp = { version = "3", features = ["server", "transport-io"] }
+# No `env-filter`: `Targets` parses RUST_LOG without pulling in regex.
+tracing-subscriber = "0.3"
+rmcp = { version = "3", default-features = false, features = ["server", "macros", "transport-io"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 schemars = "1"
 # Already in the tree via rmcp with the same features — timestamps only (D23).

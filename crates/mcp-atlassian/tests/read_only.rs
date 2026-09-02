@@ -15,6 +15,7 @@ fn service() -> ServiceConfig {
             username: "u@example.com".into(),
             token: "t".into(),
         },
+        deployment: None,
     }
 }
 
@@ -22,12 +23,8 @@ fn config(read_only: bool) -> Config {
     Config {
         jira: Some(service()),
         confluence: Some(service()),
-        enabled_tools: None,
-        disabled_tools: None,
         read_only,
-        dry_run: false,
-        audit_log: None,
-        cache_ttl: None,
+        ..Config::default()
     }
 }
 

@@ -9,5 +9,7 @@
 pub mod audit;
 pub mod banner;
 pub mod dry_run;
+#[cfg(feature = "http")]
+pub mod http;
 pub mod router_ext;
 pub mod server;

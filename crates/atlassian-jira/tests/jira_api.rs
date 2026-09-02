@@ -11,6 +11,7 @@ fn cloud_client(server: &MockServer) -> JiraClient {
             username: "u@example.com".into(),
             token: "secret".into(),
         },
+        deployment: None,
     })
     .unwrap()
 }
@@ -21,6 +22,7 @@ fn dc_client(server: &MockServer) -> JiraClient {
         auth: Auth::Pat {
             token: "pat".into(),
         },
+        deployment: None,
     })
     .unwrap()
 }
@@ -356,4 +358,155 @@ async fn search_users_dc_uses_username_param() {
     assert_eq!(users[0].name.as_deref(), Some("alice"));
     // Privacy-restricted instances omit the email entirely.
     assert_eq!(users[0].email_address, None);
+}
+
+#[tokio::test]
+async fn get_issue_requests_the_standard_set_and_models_structure() {
+    // Omitting `fields` must not mean "everything": that drags in every
+    // custom field of the instance. And what comes back must carry the
+    // structure a plan needs — parent, subtasks, links with ids.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/rest/api/2/issue/PROJ-1"))
+        .and(query_param("fields", atlassian_jira::DEFAULT_ISSUE_FIELDS))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "10001", "key": "PROJ-1",
+            "fields": {
+                "summary": "Child",
+                "parent": { "key": "PROJ-9", "fields": { "summary": "Epic", "status": { "name": "Open" } } },
+                "subtasks": [{ "key": "PROJ-2", "fields": { "summary": "Sub" } }],
+                "issuelinks": [{
+                    "id": "10500",
+                    "type": { "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+                    "outwardIssue": { "key": "PROJ-3", "fields": { "summary": "Blocked one" } }
+                }],
+                "components": [{ "name": "api" }],
+                "fixVersions": [{ "name": "1.2" }],
+                "resolution": null,
+                "duedate": "2026-10-01"
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let issue = cloud_client(&server)
+        .get_issue("PROJ-1", None)
+        .await
+        .unwrap();
+    let fields = issue.fields;
+    assert_eq!(
+        fields.parent.as_ref().map(|p| p.key.as_str()),
+        Some("PROJ-9")
+    );
+    assert_eq!(fields.subtasks[0].key, "PROJ-2");
+    assert_eq!(fields.issuelinks[0].id, "10500");
+    assert_eq!(fields.issuelinks[0].link_type.outward, "blocks");
+    assert_eq!(
+        fields.issuelinks[0]
+            .outward_issue
+            .as_ref()
+            .map(|i| i.key.as_str()),
+        Some("PROJ-3")
+    );
+    assert_eq!(fields.components[0].name, "api");
+    assert_eq!(fields.fix_versions[0].name, "1.2");
+    assert_eq!(fields.duedate.as_deref(), Some("2026-10-01"));
+    assert!(fields.extra.is_empty(), "{:?}", fields.extra);
+}
+
+#[tokio::test]
+async fn custom_fields_are_kept_only_when_asked_for_and_not_when_null() {
+    let server = MockServer::start().await;
+    let body = json!({
+        "id": "10001", "key": "PROJ-1",
+        "fields": {
+            "summary": "s",
+            "customfield_10011": 5,
+            "customfield_10012": null,
+            "customfield_10013": "unrequested"
+        }
+    });
+    Mock::given(method("GET"))
+        .and(path("/rest/api/2/issue/PROJ-1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(body))
+        .mount(&server)
+        .await;
+    let jira = cloud_client(&server);
+
+    // Named: exactly that field, even though the mock returned more.
+    let issue = jira
+        .get_issue("PROJ-1", Some("summary,customfield_10011"))
+        .await
+        .unwrap();
+    assert_eq!(issue.fields.extra.get("customfield_10011"), Some(&json!(5)));
+    assert!(!issue.fields.extra.contains_key("customfield_10013"));
+
+    // `*all`: every non-null field the instance returned.
+    let issue = jira.get_issue("PROJ-1", Some("*all")).await.unwrap();
+    assert_eq!(issue.fields.extra.len(), 2, "{:?}", issue.fields.extra);
+    assert!(!issue.fields.extra.contains_key("customfield_10012"));
+
+    // Serialized, custom fields sit at the top level of `fields`, as in Jira.
+    let value = serde_json::to_value(&issue).unwrap();
+    assert_eq!(value["fields"]["customfield_10011"], 5);
+}
+
+#[tokio::test]
+async fn the_other_deployments_paging_parameter_is_refused_not_ignored() {
+    let server = MockServer::start().await;
+    let error = cloud_client(&server)
+        .search(&SearchParams {
+            jql: "x = y".into(),
+            max_results: 5,
+            start_at: Some(10),
+            ..Default::default()
+        })
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("next_page_token"), "{error}");
+
+    let error = dc_client(&server)
+        .search(&SearchParams {
+            jql: "x = y".into(),
+            max_results: 5,
+            next_page_token: Some("tok".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("start_at"), "{error}");
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn an_explicit_deployment_overrides_the_auth_mode_inference() {
+    // Data Center behind Basic auth (D41): Basic alone would mean Cloud and
+    // route search to `/search/jql`, which DC does not have.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/rest/api/2/search"))
+        .and(query_param("startAt", "0"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "issues": [], "total": 0 })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let jira = JiraClient::new(&ServiceConfig {
+        base_url: server.uri(),
+        auth: Auth::Basic {
+            username: "u".into(),
+            token: "t".into(),
+        },
+        deployment: Some(atlassian_client::Deployment::Server),
+    })
+    .unwrap();
+    jira.search(&SearchParams {
+        jql: "x = y".into(),
+        max_results: 5,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
 }

@@ -19,6 +19,7 @@ http = [
     "rmcp/transport-streamable-http-server-session",
     "dep:axum",
     "tokio/net",
+    "tokio/signal",
 ]
 
 [dependencies]
@@ -26,12 +27,11 @@ axum = { workspace = true, optional = true }
 atlassian-client = { workspace = true, features = ["mcp"] }
 atlassian-jira = { workspace = true, features = ["mcp"] }
 atlassian-confluence = { workspace = true, features = ["mcp"] }
-storage-markdown.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["rt", "macros", "io-std", "signal", "fs"] }
+tokio = { workspace = true, features = ["rt", "macros", "io-std", "fs"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 rmcp.workspace = true
@@ -39,6 +39,7 @@ schemars.workspace = true
 
 [dev-dependencies]
 rmcp = { workspace = true, features = ["client"] }
+reqwest.workspace = true
 wiremock.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "io-util"] }
 serde_json.workspace = true

@@ -25,6 +25,11 @@ pub struct GetSprintsArgs {
     pub board_id: u64,
     /// Filter by state: `active`, `future`, `closed` (comma-separated allowed). Omit for all.
     pub state: Option<String>,
+    /// Max sprints to return (default 25, cap 50).
+    pub max_results: Option<u32>,
+    /// Offset of the first sprint; use the previous page's `startAt` plus its
+    /// length while `isLast` is false.
+    pub start_at: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -33,6 +38,9 @@ pub struct GetSprintIssuesArgs {
     pub sprint_id: u64,
     /// Max issues to return (default 25, cap 50).
     pub max_results: Option<u32>,
+    /// Offset of the first issue to return; use the previous page's `startAt`
+    /// plus its length to fetch the next page.
+    pub start_at: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -51,6 +59,9 @@ pub struct GetBoardIssuesArgs {
     pub jql: Option<String>,
     /// Max issues to return (default 25, cap 50).
     pub max_results: Option<u32>,
+    /// Offset of the first issue to return; use the previous page's `startAt`
+    /// plus its length to fetch the next page.
+    pub start_at: Option<u32>,
 }
 
 #[tool_router(router = jira_agile_router, vis = "pub(crate)")]
@@ -81,7 +92,12 @@ impl JiraTools {
     ) -> Result<Json<AgilePage<Sprint>>, McpError> {
         let sprints = self
             .client()
-            .get_sprints(args.board_id, args.state.as_deref())
+            .get_sprints(
+                args.board_id,
+                args.state.as_deref(),
+                page_size(args.max_results, 25),
+                args.start_at.unwrap_or(0),
+            )
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(sprints))
@@ -97,7 +113,12 @@ impl JiraTools {
     ) -> Result<Json<SearchPage>, McpError> {
         let page = self
             .client()
-            .get_sprint_issues(args.sprint_id, page_size(args.max_results, 25))
+            .get_sprint_issues(
+                args.sprint_id,
+                page_size(args.max_results, 25),
+                // An offset, not a page size — capping it would cap paging.
+                args.start_at.unwrap_or(0),
+            )
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(page))
@@ -136,6 +157,7 @@ impl JiraTools {
                 args.board_id,
                 args.jql.as_deref(),
                 page_size(args.max_results, 25),
+                args.start_at.unwrap_or(0),
             )
             .await
             .map_err(to_mcp_error)?;

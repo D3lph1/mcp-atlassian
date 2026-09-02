@@ -10,16 +10,18 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use atlassian_client::mcp::{
-    page_size, read_for_upload, save_attachment, status_result, to_mcp_error, StatusResult,
-};
+use atlassian_client::mcp::{page_size, saved, status_result, to_mcp_error, StatusResult};
+use atlassian_client::Upload;
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetAttachmentsArgs {
     /// Numeric page id.
     pub page_id: String,
-    /// Max attachments to return (default 25).
+    /// Max attachments to return (default 25, cap 50).
     pub limit: Option<u32>,
+    /// Offset of the first attachment; pass the previous page's `start + size`
+    /// while `has_more` is true.
+    pub start: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -28,7 +30,8 @@ pub struct DownloadAttachmentArgs {
     pub page_id: String,
     /// Attachment id from confluence_get_attachments.
     pub attachment_id: String,
-    /// Absolute local path to save the file to, e.g. `/tmp/diagram.png`.
+    /// Local path to save the file to, e.g. `/tmp/diagram.png`; relative to
+    /// ATTACHMENT_DIR when the server has one.
     pub save_path: String,
 }
 
@@ -36,7 +39,8 @@ pub struct DownloadAttachmentArgs {
 pub struct UploadAttachmentArgs {
     /// Numeric page id to attach the file to.
     pub page_id: String,
-    /// Absolute local path of the file to upload.
+    /// Local path of the file to upload; relative to ATTACHMENT_DIR when the
+    /// server has one.
     pub file_path: String,
 }
 
@@ -58,7 +62,12 @@ impl ConfluenceTools {
     ) -> Result<Json<ResultsPage<ConfluenceAttachment>>, McpError> {
         let attachments = self
             .client()
-            .get_attachments(&args.page_id, page_size(args.limit, 25))
+            .get_attachments(
+                &args.page_id,
+                page_size(args.limit, 25),
+                // An offset, not a page size — capping it would cap paging.
+                args.start.unwrap_or(0),
+            )
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(attachments))
@@ -74,7 +83,7 @@ impl ConfluenceTools {
     ) -> Result<Json<StatusResult>, McpError> {
         let confluence = self.client();
         let attachments = confluence
-            .get_attachments(&args.page_id, 200)
+            .get_attachments(&args.page_id, 200, 0)
             .await
             .map_err(to_mcp_error)?;
         let attachment = attachments
@@ -100,11 +109,12 @@ impl ConfluenceTools {
                     None,
                 )
             })?;
-        let bytes = confluence
-            .download_attachment(download)
+        let target = self.files().writable(&args.save_path)?;
+        let size = confluence
+            .download_attachment_to(download, &target, self.files().max_bytes())
             .await
             .map_err(to_mcp_error)?;
-        save_attachment(bytes, &attachment.title, &args.save_path).await
+        saved(&attachment.title, size, &target)
     }
 
     #[tool(
@@ -115,10 +125,11 @@ impl ConfluenceTools {
         &self,
         Parameters(args): Parameters<UploadAttachmentArgs>,
     ) -> Result<Json<ResultsPage<ConfluenceAttachment>>, McpError> {
-        let (file_name, bytes) = read_for_upload(&args.file_path).await?;
+        let source = self.files().readable(&args.file_path)?;
+        let upload = Upload::file(&source).await.map_err(to_mcp_error)?;
         let uploaded = self
             .client()
-            .upload_attachment(&args.page_id, &file_name, bytes)
+            .upload_attachment(&args.page_id, upload)
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(uploaded))

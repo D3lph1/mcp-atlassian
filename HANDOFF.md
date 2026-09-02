@@ -34,12 +34,18 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
   its newest comments, then asks for a plan (D30)
 - TTL cache: `CACHE_TTL` seconds, reference data only (projects, issue types,
   boards, link types, fields, spaces), off by default (D25)
-- Tests: 172 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
-  docker, coverage gate); scratch Dockerfile
-- Binary: 3.6 MB stdio / 3.9 MB with http; idle RSS ~2 MB (target < 30 MB —
-  comfortably under). The audit log added ~16 KB (chrono was already in the
-  tree via rmcp), resources ~15 KB, the TTL cache ~16 KB, dry run 112 bytes,
-  tool selection + `*_FILE` ~16 KB, the banner 80 bytes — no new dependencies
+- Tests: 225 (wiremock + end-to-end over an in-memory transport, plus the
+  HTTP transport over a real socket), coverage ~90% by line gated at 85,
+  clippy clean; CI (fmt/clippy/test, cargo-deny, musl artifact, docker,
+  coverage gate); scratch Dockerfile
+- Binary (aarch64-apple-darwin, release): 3.85 MB stdio / 4.22 MB with
+  http after phase 8. Phases 6–7 had grown it to 4.07 / 4.45 MB (streaming
+  attachments, the config matrix, the HTTP middleware); dropping
+  `EnvFilter` for `Targets` took the regex crates out and 216 KB with them,
+  so stdio is now below where phase 5 left it (3.97 MB). `cargo bloat
+  --crates` (unstripped): std 419 KB, `mcp_atlassian` 292 KB (router
+  projections, the one cut still open — HANDOFF-PLAN §3.5), rmcp 244 KB,
+  rustls 175 KB. Idle RSS ~2 MB, target < 30 MB
 
 Deliberately not done: SSE transport (deprecated in MCP), multi-user proxy.
 
@@ -80,8 +86,10 @@ Known loose ends:
       polling, deliberately skipped for now)
 - [ ] Confluence: page view analytics (Cloud-only analytics API)
 - [ ] JSM (Service Management): requests, queues
-- [ ] Bitbucket: a new `atlassian-bitbucket` crate (PRs, diffs) — the
-      workspace is ready for it
+
+Not doing: Bitbucket. The product scope is Jira + Confluence; no third
+product is planned, so no generalisation of the server crate for one
+(HANDOFF-PLAN §5.1 withdrawn).
 
 ### Distribution
 - [ ] Release binaries on GitHub: musl x86_64/aarch64 + macOS arm64
@@ -89,6 +97,45 @@ Known loose ends:
 - [ ] Homebrew formula
 
 ## Notes
+
+**Phase 8 (2026-09-02, D41).** `JIRA_DEPLOYMENT` / `CONFLUENCE_DEPLOYMENT`
+override the auth-mode inference (Data Center behind Basic auth);
+`ConfluenceClient` knows its deployment and sends `accountId` or `username`
+in restrictions accordingly — and that flag is where the Cloud v2 endpoints
+will branch. `RUST_LOG` moved into `Config` and is parsed with `Targets`
+(the `env-filter` feature and its regex crates are gone). Route filtering is
+one pass. OAuth token responses without `expires_in` assume an hour. CI
+coverage floor raised to 85. Withdrawn: the `Product` descriptor (no third
+product), fake v1/v1 `match` arms.
+
+**Phase 7 (2026-09-02, D37–D40).** Hardening and footprint: `ATTACHMENT_DIR`
+sandbox with canonicalised paths and symlink refusal, `MAX_ATTACHMENT_BYTES`
+with streamed downloads and uploads (D37); `Auth` redacts tokens in `Debug`
+(D38); `MCP_BEARER_TOKEN` on the HTTP transport, `/healthz`, graceful
+SIGTERM (D39); bounded retries with backoff for GET and 429, `REQUEST_TIMEOUT`,
+one shared `reqwest::Client`, rotated OAuth refresh tokens written back to
+their `*_FILE` (D40). `Config::read(&dyn Env)` owns every variable and is
+tested as a matrix; `Config::default()` replaced 73 struct literals in tests.
+The audit record carries `result` (created key/id) and the file is created
+`0600`. `storage-markdown` and `tokio/signal` dropped from the server crate's
+unconditional deps; rmcp built without default features. Deliberately not
+done: cache invalidation on writes — no write tool changes anything the cache
+holds (projects, types, boards, link types, fields, spaces).
+
+**Phase 6 (2026-09-02, D33–D36).** Correctness on real instances, from the
+review in `HANDOFF-PLAN.md`: Confluence attachment downloads (query string
+in the link, D33), Jira downloads under OAuth (D33), field options via the
+edit/create screens (D34), `jira_get_issue` returning parent/subtasks/links
+and requested custom fields (D35), section edits on storage XHTML so the
+other sections keep their macros (D36), fenced code ↔ `code` macro, raw
+macros in Markdown surviving comrak, JQL/CQL quoting, changelog and worklog
+caps on Server/DC, comments newest-first on both deployments, paging fields
+(`start`/`has_more`, `start_at`/`is_last`) and offset arguments on every list
+tool that pages, `jira_get_space_page_tree` saying `truncated`, typed
+`RemoteLink`, MCP error codes (`invalid_params` for what the caller can
+fix). Left for a live instance: D34's createmeta path on older DC, and
+Confluence downloads under OAuth (the gateway's handling of `/wiki/download`
+is unverified).
 
 **Review of 2026-09-02 (D31).** Three defects, all the same shape — a rule
 applied at some call sites and forgotten at others: attachment downloads
@@ -134,7 +181,10 @@ on writes — a `create_project` through this server still waits out the TTL.
 
 ## Key files
 
-- `DECISIONS.md` — 32 architecture decisions (D1–D32); read before structural
+- `HANDOFF-PLAN.md` — the 2026-09-02 full-codebase review and the phase 6–10
+  sequence. Phases 6 (correctness), 7 (hardening + footprint) and 8
+  (deployment correctness + size) are done; phase 9 (MCP surface) is next
+- `DECISIONS.md` — 41 architecture decisions (D1–D41); read before structural
   changes
 - `CLAUDE.md` — commands, layout, conventions, env vars, roadmap
 - `crates/atlassian-{jira,confluence}/src/tools/` — tools, next to the

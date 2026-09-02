@@ -10,9 +10,7 @@ use rmcp::{
 use serde::Deserialize;
 
 use super::storage::{page_to_markdown_view, to_storage, PageNode, PageView};
-use atlassian_client::mcp::{
-    list_result, page_size, status_result, to_mcp_error, ListResult, StatusResult,
-};
+use atlassian_client::mcp::{page_size, status_result, to_mcp_error, StatusResult};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceGetPageArgs {
@@ -24,8 +22,11 @@ pub struct ConfluenceGetPageArgs {
 pub struct ConfluenceGetPageChildrenArgs {
     /// Numeric page id.
     pub page_id: String,
-    /// Max children to return (default 25).
+    /// Max children to return (default 25, cap 50).
     pub limit: Option<u32>,
+    /// Offset of the first child; pass the previous page's `start + size`
+    /// while `has_more` is true.
+    pub start: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -73,8 +74,21 @@ pub struct MovePageArgs {
 pub struct SpacePageTreeArgs {
     /// Space key, e.g. `DEV`.
     pub space_key: String,
-    /// Max pages to walk (default 50, cap 50).
+    /// Max pages to walk (default 50, cap 50). A space with more pages than
+    /// this is reported as `truncated`; use confluence_get_page_children to
+    /// descend into a subtree.
     pub limit: Option<u32>,
+}
+
+/// A space's page hierarchy, with an honest flag when it did not all fit.
+#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
+pub struct PageTree {
+    pub roots: Vec<PageNode>,
+    /// Pages fetched — not the number of roots.
+    pub count: usize,
+    /// True when the space has more pages than were walked; the tree is then
+    /// a prefix (alphabetical by title), not the hierarchy.
+    pub truncated: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -117,7 +131,12 @@ impl ConfluenceTools {
     ) -> Result<Json<ResultsPage<Content>>, McpError> {
         let children = self
             .client()
-            .get_page_children(&args.page_id, page_size(args.limit, 25))
+            .get_page_children(
+                &args.page_id,
+                page_size(args.limit, 25),
+                // An offset, not a page size — capping it would cap paging.
+                args.start.unwrap_or(0),
+            )
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(children))
@@ -208,23 +227,27 @@ impl ConfluenceTools {
     }
 
     #[tool(
-        description = "Get the page hierarchy of a Confluence space as a tree of ids and titles. Use it to understand how a space is organized before reading individual pages.",
+        description = "Get the page hierarchy of a Confluence space as a tree of ids and titles (up to 50 pages; `truncated` says when there are more). Use it to understand how a space is organized before reading individual pages.",
         annotations(read_only_hint = true)
     )]
     async fn confluence_get_space_page_tree(
         &self,
         Parameters(args): Parameters<SpacePageTreeArgs>,
-    ) -> Result<Json<ListResult<PageNode>>, McpError> {
+    ) -> Result<Json<PageTree>, McpError> {
         let pages = self
             .client()
             .get_space_pages(&args.space_key, page_size(args.limit, 50))
             .await
             .map_err(to_mcp_error)?;
-        list_result(build_page_tree(&pages.results))
+        Ok(Json(PageTree {
+            roots: build_page_tree(&pages.results),
+            count: pages.results.len(),
+            truncated: pages.has_more,
+        }))
     }
 
     #[tool(
-        description = "Replace one section of a Confluence page, identified by its heading text, leaving the rest of the page untouched. Prefer this over confluence_update_page when editing part of a long document.",
+        description = "Replace one section of a Confluence page, identified by its heading text, leaving the rest of the page untouched (macros included). The section runs from that heading to the next heading of the same or higher level. Prefer this over confluence_update_page when editing part of a long document.",
         annotations(read_only_hint = false, destructive_hint = true)
     )]
     async fn confluence_update_page_section(
@@ -236,35 +259,28 @@ impl ConfluenceTools {
             .get_page(&args.page_id)
             .await
             .map_err(to_mcp_error)?;
+        // The edit happens on the storage document itself (D36). Converting
+        // the whole page to Markdown and back would rewrite every section,
+        // and the sections not being edited would lose their macros.
         let current = page
             .body
             .as_ref()
             .and_then(|b| b.storage.as_ref())
-            .map(|s| storage_markdown::storage_to_markdown(&s.value))
+            .map(|s| s.value.as_str())
             .unwrap_or_default();
-        let replacement = match args.content_format.as_deref().unwrap_or("markdown") {
-            "markdown" => args.new_content.clone(),
-            "storage" => storage_markdown::storage_to_markdown(&args.new_content),
-            other => {
-                return Err(McpError::invalid_params(
-                    format!("unknown content_format `{other}`: use `markdown` or `storage`"),
-                    None,
-                ))
-            }
-        };
-        let updated =
-            replace_section(&current, &args.heading_text, &replacement).ok_or_else(|| {
+        let replacement = to_storage(&args.new_content, args.content_format.as_deref())?;
+        let updated = storage_markdown::replace_section(current, &args.heading_text, &replacement)
+            .ok_or_else(|| {
                 McpError::invalid_params(
                     format!(
-                    "no heading `{}` on page {} — read the page first to get its exact headings",
-                    args.heading_text, args.page_id
-                ),
+                        "no heading `{}` on page {} — read the page first to get its exact headings",
+                        args.heading_text, args.page_id
+                    ),
                     None,
                 )
             })?;
-        let storage = storage_markdown::markdown_to_storage(&updated);
         let page = confluence
-            .update_page(&args.page_id, None, Some(&storage))
+            .update_page(&args.page_id, None, Some(&updated))
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(page_to_markdown_view(&page)))
@@ -300,32 +316,4 @@ fn build_page_tree(pages: &[Content]) -> Vec<PageNode> {
     }
 
     roots.iter().map(|p| node(p, &children)).collect()
-}
-
-/// Replaces the body of the Markdown section introduced by `heading` — from
-/// that heading up to the next heading of the same or higher level.
-fn replace_section(markdown: &str, heading: &str, replacement: &str) -> Option<String> {
-    let lines: Vec<&str> = markdown.lines().collect();
-    let heading_level = |line: &str| -> Option<usize> {
-        let hashes = line.chars().take_while(|c| *c == '#').count();
-        (hashes > 0 && line.chars().nth(hashes) == Some(' ')).then_some(hashes)
-    };
-    let start = lines.iter().position(|line| {
-        heading_level(line).is_some() && line.trim_start_matches('#').trim() == heading.trim()
-    })?;
-    let level = heading_level(lines[start])?;
-    let end = lines[start + 1..]
-        .iter()
-        .position(|line| heading_level(line).is_some_and(|l| l <= level))
-        .map(|offset| start + 1 + offset)
-        .unwrap_or(lines.len());
-
-    let mut out: Vec<String> = lines[..=start].iter().map(|s| s.to_string()).collect();
-    out.push(String::new());
-    out.push(replacement.trim_end().to_string());
-    if end < lines.len() {
-        out.push(String::new());
-        out.extend(lines[end..].iter().map(|s| s.to_string()));
-    }
-    Some(out.join("\n"))
 }

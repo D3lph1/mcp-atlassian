@@ -25,8 +25,11 @@ pub struct ConfluenceAddCommentArgs {
 pub struct ConfluenceGetCommentsArgs {
     /// Numeric page id.
     pub page_id: String,
-    /// Max comments to return (default 10).
+    /// Max comments to return (default 10, cap 50).
     pub limit: Option<u32>,
+    /// Offset of the first comment; pass the previous page's `start + size`
+    /// while `has_more` is true.
+    pub start: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -88,7 +91,12 @@ impl ConfluenceTools {
     ) -> Result<Json<ListResult<PageView>>, McpError> {
         let comments = self
             .client()
-            .get_comments(&args.page_id, page_size(args.limit, 10))
+            .get_comments(
+                &args.page_id,
+                page_size(args.limit, 10),
+                // An offset, not a page size — capping it would cap paging.
+                args.start.unwrap_or(0),
+            )
             .await
             .map_err(to_mcp_error)?;
         let views: Vec<PageView> = comments.results.iter().map(page_to_markdown_view).collect();

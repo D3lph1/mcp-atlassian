@@ -20,14 +20,11 @@ fn config(mock: &MockServer, cache_ttl: Option<Duration>) -> Config {
                 username: "u@example.com".into(),
                 token: "t".into(),
             },
+            deployment: None,
         }),
         confluence: None,
-        enabled_tools: None,
-        disabled_tools: None,
-        read_only: false,
-        dry_run: false,
-        audit_log: None,
         cache_ttl,
+        ..Config::default()
     }
 }
 

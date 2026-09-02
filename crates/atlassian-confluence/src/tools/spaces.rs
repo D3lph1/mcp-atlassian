@@ -20,6 +20,8 @@ pub struct ConfluenceGetSpacesArgs {
 pub struct ConfluenceGetLabelsArgs {
     /// Numeric page id.
     pub page_id: String,
+    /// Max labels to return (default 50, cap 50).
+    pub limit: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -58,7 +60,7 @@ impl ConfluenceTools {
     ) -> Result<Json<ResultsPage<Label>>, McpError> {
         let labels = self
             .client()
-            .get_labels(&args.page_id)
+            .get_labels(&args.page_id, page_size(args.limit, 50))
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(labels))
