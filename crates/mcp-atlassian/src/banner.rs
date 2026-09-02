@@ -30,6 +30,9 @@ const FRAME: &str = "\x1b[38;5;24m";
 const GLYPH: &str = "\x1b[1;38;5;39m";
 const TITLE: &str = "\x1b[1;38;5;75m";
 const MUTED: &str = "\x1b[2m";
+/// Underlined, so a terminal that linkifies URLs still looks deliberate and
+/// one that does not still marks the line as an address.
+const LINK: &str = "\x1b[2;4;38;5;110m";
 const LABEL: &str = "\x1b[38;5;110m";
 const ON: &str = "\x1b[32m";
 const OFF: &str = "\x1b[2;31m";
@@ -115,6 +118,15 @@ pub fn render(config: &Config, transport: &str, tools: usize, colors: bool) -> S
     out.push_str(&row(
         &[span(tagline, MUTED)],
         centered(tagline.chars().count()),
+        colors,
+    ));
+    // From the manifest rather than a literal: the banner cannot then outlive
+    // a move of the repository, and there is one place that says where this
+    // came from.
+    let source = env!("CARGO_PKG_REPOSITORY");
+    out.push_str(&row(
+        &[span(source, LINK)],
+        centered(source.chars().count()),
         colors,
     ));
     out.push_str(&row(&[], 0, colors));
@@ -292,6 +304,17 @@ mod tests {
         assert!(banner.contains("Confluence ✗"), "{banner}");
         assert!(banner.contains("23 registered"), "{banner}");
         assert!(banner.contains("read-only"), "{banner}");
+    }
+
+    /// Where to report a problem, taken from the manifest rather than typed
+    /// into the banner — the assertion is that the two agree.
+    #[test]
+    fn the_banner_says_where_the_server_came_from() {
+        let banner = render(&config(), "stdio", 1, false);
+        assert!(
+            banner.contains(env!("CARGO_PKG_REPOSITORY")),
+            "the repository from Cargo.toml should be on the banner: {banner}"
+        );
     }
 
     #[test]

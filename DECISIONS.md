@@ -588,6 +588,12 @@ useful. What does depend on the terminal is colour: ANSI escapes in a captured
 log are noise, so they are emitted only when stderr is a TTY, and suppressed by
 `NO_COLOR` (the no-color.org convention).
 
+Under the title sit the tagline and the repository URL, the latter read from
+`CARGO_PKG_REPOSITORY` rather than written out: a banner is where someone
+looks when they want to know what this process is and where to report it, and
+taking it from the manifest means a move of the repository cannot leave a
+stale address on the screen. A test asserts the two agree.
+
 `NO_BANNER=true` swaps it for the structured `tracing::info!` startup line. The
 two are alternatives, not both: they carry the same facts, and printing them
 together on every start is noise. The operator picks the format — a box for a
