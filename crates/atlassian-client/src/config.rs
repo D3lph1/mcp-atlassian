@@ -104,7 +104,7 @@ pub const DEFAULT_MAX_ATTACHMENT_BYTES: u64 = 50 * 1024 * 1024;
 /// Variable names follow the conventions established by existing Atlassian
 /// MCP servers, so an existing client config works unchanged (D8). Every
 /// variable the server reads is read here, so one place validates and one
-/// place documents — `CLAUDE.md`'s table is this struct.
+/// place documents — `AGENTS.md`'s table is this struct.
 #[derive(Debug, Clone)]
 pub struct Config {
     pub jira: Option<ServiceConfig>,

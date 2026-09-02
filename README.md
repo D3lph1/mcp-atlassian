@@ -65,7 +65,7 @@ The switches worth knowing:
 | `JIRA_DEPLOYMENT` | `cloud` or `server` when the auth mode does not tell |
 | `TRANSPORT=streamable-http` | HTTP instead of stdio; `HOST`, `PORT`, `MCP_BEARER_TOKEN` |
 
-The full list is in [CLAUDE.md](CLAUDE.md).
+The full list is in [AGENTS.md](AGENTS.md).
 
 ## What the model gets
 

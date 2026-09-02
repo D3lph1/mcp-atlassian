@@ -24,7 +24,7 @@ use rmcp::{
 /// The MCP server: holds product clients and routes tool calls.
 ///
 /// This is the only crate that knows about MCP — product crates stay
-/// protocol-free (see CLAUDE.md dependency rule). Tool implementations live
+/// protocol-free (see AGENTS.md dependency rule). Tool implementations live
 /// in `crate::tools` (one module per product); this file owns construction,
 /// route filtering and the `ServerHandler` impl.
 #[derive(Clone)]
