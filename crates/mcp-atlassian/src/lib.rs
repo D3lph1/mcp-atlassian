@@ -7,6 +7,7 @@
 //! over a product's own state are re-targeted onto [`server::AtlassianServer`].
 
 pub mod audit;
+pub mod banner;
 pub mod dry_run;
 pub mod router_ext;
 pub mod server;

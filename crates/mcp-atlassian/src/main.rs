@@ -16,15 +16,22 @@ async fn main() -> anyhow::Result<()> {
     let server = AtlassianServer::new(&config).context("failed to initialize clients")?;
 
     let transport = std::env::var("TRANSPORT").unwrap_or_else(|_| "stdio".into());
-    tracing::info!(
-        transport = %transport,
-        jira = config.jira.is_some(),
-        confluence = config.confluence.is_some(),
-        read_only = config.read_only,
-        dry_run = config.dry_run,
-        tools = server.tool_names().len(),
-        "starting mcp-atlassian"
-    );
+    // One startup summary, in whichever form suits the reader: the banner for a
+    // human watching a terminal or `docker logs`, the structured line for a log
+    // collector. Both go to stderr — stdout is the protocol (D29).
+    if banner_wanted() {
+        mcp_atlassian::banner::print(&config, &transport, server.tool_names().len());
+    } else {
+        tracing::info!(
+            transport = %transport,
+            jira = config.jira.is_some(),
+            confluence = config.confluence.is_some(),
+            read_only = config.read_only,
+            dry_run = config.dry_run,
+            tools = server.tool_names().len(),
+            "starting mcp-atlassian"
+        );
+    }
 
     match transport.as_str() {
         "stdio" => {
@@ -43,6 +50,16 @@ async fn main() -> anyhow::Result<()> {
         other => anyhow::bail!("unknown TRANSPORT `{other}`: use `stdio` or `streamable-http`"),
     }
     Ok(())
+}
+
+/// `NO_BANNER=true` swaps the banner for the structured startup line.
+fn banner_wanted() -> bool {
+    !std::env::var("NO_BANNER").is_ok_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "true" | "1" | "yes"
+        )
+    })
 }
 
 #[cfg(feature = "http")]

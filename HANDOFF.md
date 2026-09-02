@@ -22,6 +22,8 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
 - Audit log: `AUDIT_LOG_FILE` appends one JSONL record per write call —
   timestamp, tool, arguments, outcome, duration, `destructive` and `dry_run`
   flags (D23)
+- Startup banner on stderr (never stdout — that is the protocol), colour only
+  for a TTY; `NO_BANNER` falls back to the structured line (D29)
 - Markdown ↔ Confluence storage (htmd/comrak, D10)
 - Structured output: every tool advertises an `outputSchema` and returns
   `structuredContent` (D20)
@@ -29,12 +31,12 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
   resource templates; `resources/list` intentionally empty (D24)
 - TTL cache: `CACHE_TTL` seconds, reference data only (projects, issue types,
   boards, link types, fields, spaces), off by default (D25)
-- Tests: 143 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
+- Tests: 148 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
   docker); scratch Dockerfile
 - Binary: 3.6 MB stdio / 3.9 MB with http; idle RSS ~2 MB (target < 30 MB —
   comfortably under). The audit log added ~16 KB (chrono was already in the
   tree via rmcp), resources ~15 KB, the TTL cache ~16 KB, dry run 112 bytes,
-  tool selection + `*_FILE` ~16 KB — no new dependencies
+  tool selection + `*_FILE` ~16 KB, the banner 80 bytes — no new dependencies
 
 Deliberately not done: SSE transport (deprecated in MCP), multi-user proxy.
 
@@ -113,7 +115,7 @@ on writes — a `create_project` through this server still waits out the TTL.
 
 ## Key files
 
-- `DECISIONS.md` — 28 architecture decisions (D1–D28); read before structural
+- `DECISIONS.md` — 29 architecture decisions (D1–D29); read before structural
   changes
 - `CLAUDE.md` — commands, layout, conventions, env vars, roadmap
 - `crates/atlassian-{jira,confluence}/src/tools/` — tools, next to the

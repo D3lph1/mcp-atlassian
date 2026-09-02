@@ -518,3 +518,34 @@ thing the environment genuinely cannot express is several instances of the
 same product (two Jiras), because the variable names are a flat namespace —
 if that lands, the file arrives with it, as part of that feature rather than
 as a second spelling of this one.
+
+## D29. Startup banner: stderr only, colour only for a terminal
+A framed banner with the version, transport, configured services, tool count
+and active modes is printed at startup, followed by the usual logs.
+
+**It goes to stderr, and nothing may ever move it to stdout.** In stdio mode
+stdout carries the MCP protocol; one box-drawing character on it desynchronizes
+the client's JSON reader. This is the same constraint that already sends the
+tracing subscriber to stderr, and it is the one thing about this file worth
+remembering. A test asserts stdout stays pure JSON-RPC.
+
+Printed unconditionally rather than only on a TTY. The common deployment is a
+container, where stderr is a pipe and `docker logs` is the only place anyone
+looks — gating on a terminal would hide the banner exactly where it is most
+useful. What does depend on the terminal is colour: ANSI escapes in a captured
+log are noise, so they are emitted only when stderr is a TTY, and suppressed by
+`NO_COLOR` (the no-color.org convention).
+
+`NO_BANNER=true` swaps it for the structured `tracing::info!` startup line. The
+two are alternatives, not both: they carry the same facts, and printing them
+together on every start is noise. The operator picks the format — a box for a
+human, key-value fields for a log collector.
+
+Layout is measured in characters, not bytes, and every row is padded from the
+visible width, so colour codes cannot shift the frame; tests assert every line
+of the box is exactly 80 columns with colour on and off, including an
+over-long audit path (elided from the left, keeping the file name).
+
+No dependency. `std::io::IsTerminal` covers TTY detection, and the escape codes
+are six string constants — `owo-colors`, `colored` and the rest would pull a
+crate in for `format!`.

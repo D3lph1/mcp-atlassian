@@ -52,6 +52,8 @@ optional — tools register only for configured services.
 | `DRY_RUN` | `true` → write tools stay listed but are validated and described instead of performed (D26). For demos and prompt rehearsal; reads still execute for real |
 | `AUDIT_LOG_FILE` | path to a JSONL audit log; every write call appends one record (D23). Unset = no auditing |
 | `CACHE_TTL` | seconds to cache reference data (projects, issue types, boards, spaces, fields); unset or `0` = no caching (D25) |
+| `NO_BANNER` | `true` → print the structured startup line instead of the banner (D29) |
+| `NO_COLOR` | any value → no ANSI colour in the banner (colour is also off when stderr is not a terminal) |
 | `TRANSPORT` | `stdio` (default) or `streamable-http` (needs `--features http`) |
 | `HOST` / `PORT` / `ALLOWED_HOSTS` | HTTP transport bind address (127.0.0.1:8000) and extra Host-header allowlist (D18) |
 
@@ -83,6 +85,7 @@ crates/
     src/main.rs                  #   entry: config, transport (stdio / http)
     src/server.rs                #   composition, route filtering, ServerHandler
     src/audit.rs                 #   JSONL audit log of write calls (D23)
+    src/banner.rs                #   startup banner; stderr only, never stdout (D29)
     src/dry_run.rs               #   DRY_RUN: describe writes, do not run them (D26)
     src/router_ext.rs            #   projects product routers onto the server (D21)
 ```
