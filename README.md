@@ -111,7 +111,7 @@ an in-memory MCP transport.
 
 ## License and trademarks
 
-MIT.
+MIT — see [LICENSE](LICENSE).
 
 Jira, Confluence and Atlassian are trademarks of Atlassian Pty Ltd, and all
 rights to them belong to Atlassian. This project is an independent,
