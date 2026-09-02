@@ -8,11 +8,9 @@ typically need an order of magnitude more.
 Architecture decisions live in `DECISIONS.md` — read it before changing
 anything structural. Key ones: rmcp SDK (D1), Jira API v2 only (D5),
 conventional env-var names (D8), curated tool set (D9), deployment detection
-by auth mode with an explicit override (D16, D41). The improvement plan and its phase sequence live in
-`HANDOFF-PLAN.md`.
-
-Project status and the feature backlog live in `HANDOFF.md` — update it when
-finishing a phase or picking up a backlog item.
+by auth mode with an explicit override (D16, D41). Status, what is
+deliberately not done, and the backlog are D46 — update it when picking up
+or finishing an item.
 
 ## Commands
 
@@ -199,16 +197,7 @@ is a plain REST library (D15).
   through `cached(...)`; if it takes narrowing arguments, they belong in the
   cache key.
 
-## Roadmap phases
-
-1. ✅ Skeleton: config, auth, shared client, rmcp stdio server.
-2. ✅ Jira core tools (D9 list, 13 tools).
-3. ✅ Confluence core tools (11 tools) + markdown conversion.
-4. ✅ `ENABLED_TOOLS` / `READ_ONLY` (route filtering at startup),
-   Dockerfile (musl + scratch), GitHub Actions CI.
-5. ✅ Deferred items (D11): streamable HTTP (`http` feature, D18), OAuth 2.0
-   refresh-flow (D17), Jira agile API (4 tools), attachments (3 tools).
-   Not doing: SSE transport (deprecated in MCP spec), multi-user auth proxy.
+## Route filtering and wrappers
 
 Filtering lives in `AtlassianServer::new` — routes are pruned from the
 `ToolRouter` before serving (`#[tool_handler(router = self.tool_router)]`),

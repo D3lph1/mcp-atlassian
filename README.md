@@ -94,9 +94,8 @@ path serves both. Endpoint paths are guarded against interpolated
 identifiers, page sizes are capped, retries are bounded and only for what is
 safe to replay, and every environment variable is read in one place.
 
-The reasons behind these and forty other decisions are in
-[DECISIONS.md](DECISIONS.md); the project's status and plan in
-[HANDOFF.md](HANDOFF.md).
+The reasons behind these and forty other decisions — and what is
+deliberately not done — are in [DECISIONS.md](DECISIONS.md).
 
 ## Develop
 

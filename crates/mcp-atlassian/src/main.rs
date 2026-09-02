@@ -34,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Config::from_env().context("failed to load configuration")?;
     // `Targets` reads the same `crate=level` directives as `EnvFilter` and
-    // needs no regex, which was ~130 KB of the binary (HANDOFF-PLAN §3.5).
+    // needs no regex, which was ~130 KB of the binary (D41).
     let filter: Targets = config
         .log_filter
         .parse()

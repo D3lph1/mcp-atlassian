@@ -943,7 +943,8 @@ title, images to `![alt](file)`, task lists to ☑/☐ items, `status` and
 `jira` to their text in bold, `toc` to a marker. Nesting is handled by
 rewriting the body first; a self-closing macro has no body. Anything else
 still degrades to text. This is string scanning over a closed vocabulary,
-not an XML parser (HANDOFF-PLAN §12).
+not an XML parser: `quick-xml` or `roxmltree` would cost ~200 KB for no
+correctness gain on this input.
 
 ## D44. Sub-resources and completions
 `jira://KEY/comments` and `confluence://ID/comments` join the two resource
@@ -958,7 +959,7 @@ Other arguments answer with an empty list, which is what the spec says an
 argument with nothing to offer does.
 
 Not done, and not going to be: forwarding the server's log to the client
-through the `logging` capability (HANDOFF-PLAN §6.5). rmcp marks the whole
+through the `logging` capability. rmcp marks the whole
 capability deprecated — SEP-2577 removes it from the protocol — so a model
 that needs to know about a retry will keep learning it from the tool's
 error text (D13).
@@ -981,3 +982,52 @@ a token for every upload.
 `--version` and `--help` are the only flags; everything else is the
 environment (D8). No clap: two string matches before the configuration is
 read, so they work on an unconfigured machine.
+
+## D46. Scope, status and what is left
+The status and backlog used to live in two handoff files; they were folded
+in here and removed, so there is one document to keep true.
+
+**Where things stand (2026-09-02).** 70 tools (40 Jira, 30 Confluence),
+four prompts, four resource templates, `issue_key` completion. 245 tests
+against wiremock and an in-memory MCP transport, 90.4% line coverage gated
+at 85, clippy and cargo-deny clean. Release binary on aarch64-apple-darwin:
+3.85 MB stdio, 4.22 MB with `http`; idle RSS ~2 MB against a 30 MB target.
+`cargo bloat --crates` on the unstripped http build: std 419 KB,
+`mcp_atlassian` 292 KB, rmcp 244 KB, rustls 175 KB. The 292 KB are mostly
+the projected routers (D21) — one boxed closure per tool per wrapper — and
+are the one size cut still open; measure before touching.
+
+**Deliberately not done.** Bitbucket, or any third product: the server is
+Jira + Confluence, and nothing is generalised in anticipation — a `Product`
+descriptor that would fold the two products' spelled-out handling in
+`server.rs` into a list was designed and withdrawn, because two products
+written out are easier to read than one abstraction with two instances.
+SSE transport (removed from the MCP spec). A multi-user auth proxy (D11).
+A config file (D28) — multi-instance, two Jiras, is the one case that would
+bring one, and it is not asked for. The `logging` capability (D44). Jira
+API v3 / ADF (D5). Single-flight for cache misses (D25). Cache invalidation
+on writes: no write tool changes anything the cache holds. A CHANGELOG:
+release notes are generated from commits.
+
+**Open, in rough order of value.**
+- Publish to crates.io: the path dependencies already carry versions;
+  publish client → storage-markdown → jira → confluence → server. Then a
+  Homebrew formula.
+- `--list-tools`, so a user can see the surface without configuring.
+- A `jira_release_notes` prompt (fixVersion → grouped summaries).
+- JSM (Service Management) requests and queues; Jira `move_issue` across
+  projects (Cloud's async task API needs polling); Confluence page
+  analytics (Cloud-only).
+- `resources/list` seeded from recently updated items, if a client turns out
+  to need a non-empty list.
+- The audit append is a blocking write on the runtime thread (D23); wrap it
+  in `spawn_blocking` if the log ever goes to a network filesystem.
+
+**Verify on a live instance.** Three things wiremock cannot: the createmeta
+per-issue-type path (D34) on a Data Center older than 8.4; Confluence
+attachment downloads under OAuth, where the gateway's handling of
+`/wiki/download/…` is unverified (D33); and the CI matrix's first run —
+Linux aarch64 cross-compilation, macOS x86_64, Windows — plus the Coveralls
+upload, which needs `COVERALLS_REPO_TOKEN` for a private repository (D45).
+The Docker image has not been built on the development machine either; the
+CI job covers it.
