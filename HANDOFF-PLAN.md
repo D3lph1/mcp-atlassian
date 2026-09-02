@@ -441,7 +441,7 @@ missing:
 
 ---
 
-## 10. Distribution and docs (P3, but blocks a first release)
+## 10. Distribution and docs (P3, but blocks a first release) — **done in phase 10 (D45)**, except crates.io / Homebrew and `--list-tools`; no CHANGELOG by decision
 
 - `README.md` — install (binary, Docker, `cargo install`), the env table
   from CLAUDE.md, Claude Desktop / Cursor config snippets, a tool list
@@ -469,7 +469,7 @@ missing:
 | 7 ✅ | Hardening + footprint | 2.1–2.5, 3.1–3.4, 5.2–5.4 (config), 8 (retries, token persistence) | done 2026-09-02 |
 | 8 ✅ | Deployment correctness + size | 5.5, 5.6, 5.8, 5.9, 3.5, coverage floor to 85 | done 2026-09-02 |
 | 9 ✅ | MCP surface | 6.1–6.6, remaining 7 (macro reading), 9 | done 2026-09-02 |
-| 10 | Release | 10 | ~1 day |
+| 10 ✅ | Release | 10 | done 2026-09-02 |
 
 Phase 6 first because 1.1 and 1.3 are the two tools a Confluence user
 reaches for most after `get_page`, and both currently fail or damage data in

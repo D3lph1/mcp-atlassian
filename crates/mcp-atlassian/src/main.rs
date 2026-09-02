@@ -4,8 +4,34 @@ use mcp_atlassian::server::AtlassianServer;
 use rmcp::{transport::stdio, ServiceExt};
 use tracing_subscriber::{filter::Targets, prelude::*};
 
+const USAGE: &str = "\
+mcp-atlassian — MCP server for Jira and Confluence
+
+Usage: mcp-atlassian [--version | --help]
+
+Configured entirely through environment variables (JIRA_URL, JIRA_API_TOKEN,
+CONFLUENCE_URL, READ_ONLY, DRY_RUN, ENABLED_TOOLS, TRANSPORT, …); see
+https://github.com/d3lph1/mcp-atlassian for the full list. Speaks MCP on
+stdin/stdout by default; TRANSPORT=streamable-http serves HTTP instead.";
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
+    // The two flags a user checks a binary with, before configuring it.
+    // Handled before anything else, so they work without credentials.
+    if let Some(flag) = std::env::args().nth(1) {
+        match flag.as_str() {
+            "--version" | "-V" => {
+                println!("mcp-atlassian {}", env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
+            "--help" | "-h" => {
+                println!("{USAGE}");
+                return Ok(());
+            }
+            other => anyhow::bail!("unknown argument `{other}`; try --help"),
+        }
+    }
+
     let config = Config::from_env().context("failed to load configuration")?;
     // `Targets` reads the same `crate=level` directives as `EnvFilter` and
     // needs no regex, which was ~130 KB of the binary (HANDOFF-PLAN §3.5).

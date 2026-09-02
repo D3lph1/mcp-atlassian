@@ -56,7 +56,9 @@ Deliberately not done: SSE transport (deprecated in MCP), multi-user proxy.
 Known loose ends:
 - [ ] The Docker image has not been built locally (daemon / credential helper
       on this machine); the CI `docker` job should verify it
-- [ ] No README.md for publication yet
+- [ ] The CI matrix (Linux aarch64 cross, macOS x86_64, Windows) and the
+      Coveralls upload have not run yet — the first push will say. A
+      private repository needs `COVERALLS_REPO_TOKEN`
 
 ## Feature backlog (prioritized)
 
@@ -94,11 +96,21 @@ product is planned, so no generalisation of the server crate for one
 (HANDOFF-PLAN §5.1 withdrawn).
 
 ### Distribution
-- [ ] Release binaries on GitHub: musl x86_64/aarch64 + macOS arm64
-- [ ] Publish to crates.io (`cargo install mcp-atlassian`)
+- [x] Release binaries on GitHub: Linux musl x86_64/aarch64, macOS
+      x86_64/aarch64, Windows x86_64, on a `v*` tag (D45)
+- [ ] Publish to crates.io (`cargo install mcp-atlassian`) — the path deps
+      carry versions already; publish client → markdown → jira → confluence
+      → server
 - [ ] Homebrew formula
 
 ## Notes
+
+**Phase 10 (2026-09-02, D45).** README with CI and coverage badges, MIT
+LICENSE, `--version`/`--help`, `USER` in the Dockerfile, and the CI
+pipeline: check (fmt, clippy, test), coverage (llvm-cov → Coveralls, floor
+85), cargo-deny, a five-target binary matrix, docker, and a release job on
+`v*` tags. No CHANGELOG by decision of the owner; release notes are
+generated from commits.
 
 **Phase 9 (2026-09-02, D42–D44).** MCP surface: `title` / `idempotentHint`
 / `openWorldHint` on every tool with an invariant in `every_tool.rs`;
@@ -194,9 +206,9 @@ on writes — a `create_project` through this server still waits out the TTL.
 
 - `HANDOFF-PLAN.md` — the 2026-09-02 full-codebase review and the phase 6–10
   sequence. Phases 6 (correctness), 7 (hardening + footprint) and 8
-  (deployment correctness + size) and 9 (MCP surface) are done; phase 10
-  (release) is next
-- `DECISIONS.md` — 44 architecture decisions (D1–D44); read before structural
+  (deployment correctness + size), 9 (MCP surface) and 10 (release) are
+  done; what is left is the backlog below
+- `DECISIONS.md` — 45 architecture decisions (D1–D45); read before structural
   changes
 - `CLAUDE.md` — commands, layout, conventions, env vars, roadmap
 - `crates/atlassian-{jira,confluence}/src/tools/` — tools, next to the

@@ -9,4 +9,6 @@ RUN cargo build --release --locked -p mcp-atlassian --features http
 
 FROM scratch
 COPY --from=builder /build/target/release/mcp-atlassian /mcp-atlassian
+# No root inside the container; nothing here needs it.
+USER 65534:65534
 ENTRYPOINT ["/mcp-atlassian"]

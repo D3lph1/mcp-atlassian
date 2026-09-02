@@ -23,7 +23,13 @@ cargo clippy -- -D warnings    # lint, warnings are errors
 cargo fmt                      # format
 cargo run -p mcp-atlassian     # run stdio server (needs env vars, see below)
 cargo test -p atlassian-jira   # test a single crate
+mcp-atlassian --version        # the only flags: --version, --help
 ```
+
+CI (`.github/workflows/ci.yml`): fmt + clippy + test, coverage to Coveralls
+with an 85% floor, cargo-deny, binaries for Linux musl x86_64/aarch64, macOS
+x86_64/aarch64 and Windows x86_64, docker; a `v*` tag publishes a release
+(D45).
 
 Release build (size-optimized, see profile in Cargo.toml):
 

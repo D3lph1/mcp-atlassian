@@ -3,12 +3,15 @@ name: CI
 on:
   push:
     branches: [master]
+    tags: ["v*"]
   pull_request:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Format, lint and tests on the host toolchain; everything else assumes
+  # this is green.
   check:
     runs-on: ubuntu-latest
     steps:
@@ -24,6 +27,8 @@ jobs:
       - name: Test
         run: cargo test --all-features
 
+  # Line coverage, gated at 85% (a ratchet: raise it when the number moves
+  # up, never lower it) and published to Coveralls for the README badge.
   coverage:
     runs-on: ubuntu-latest
     steps:
@@ -33,42 +38,74 @@ jobs:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
-      # The floor is a ratchet, not a target: it exists so a drop is a failing
-      # build rather than something noticed months later. Raise it when the
-      # real number moves up; never lower it to make a red build green.
       - name: Coverage
-        run: cargo llvm-cov --all-features --workspace --summary-only --fail-under-lines 85
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --fail-under-lines 85
+      - uses: coverallsapp/github-action@v2
+        with:
+          file: lcov.info
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
+  # Advisories and licenses over the whole tree; the policy is deny.toml.
   deny:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Advisories and licenses over the whole tree; the policy is deny.toml.
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check advisories licenses bans sources
 
-  musl-build:
-    runs-on: ubuntu-latest
+  # Release binaries for every platform a client runs on. Linux is static
+  # (musl) so one file works on any distribution and in a scratch image.
+  build:
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-musl
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - name: Install musl tools
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - name: Build static binary
-        run: cargo build --release --locked --target x86_64-unknown-linux-musl -p mcp-atlassian --features http
-      - name: Verify static linkage and size
+        with:
+          key: ${{ matrix.target }}
+      - name: Cross toolchain (Linux)
+        if: runner.os == 'Linux'
+        uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} -p mcp-atlassian --features http
+      - name: Package
+        shell: bash
         run: |
-          file target/x86_64-unknown-linux-musl/release/mcp-atlassian
-          ls -lh target/x86_64-unknown-linux-musl/release/mcp-atlassian
+          set -euo pipefail
+          name="mcp-atlassian-${{ matrix.target }}"
+          mkdir -p dist
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp "target/${{ matrix.target }}/release/mcp-atlassian.exe" "dist/$name.exe"
+          else
+            cp "target/${{ matrix.target }}/release/mcp-atlassian" "dist/$name"
+            ls -l "dist/$name"
+          fi
       - uses: actions/upload-artifact@v4
         with:
-          name: mcp-atlassian-x86_64-linux-musl
-          path: target/x86_64-unknown-linux-musl/release/mcp-atlassian
+          name: mcp-atlassian-${{ matrix.target }}
+          path: dist/*
 
+  # The scratch image (D12); built, not pushed.
   docker:
     runs-on: ubuntu-latest
     steps:
@@ -77,3 +114,23 @@ jobs:
         run: docker build -t mcp-atlassian:ci .
       - name: Report image size
         run: docker images mcp-atlassian:ci
+
+  # A `v*` tag turns the five binaries into a GitHub release.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, coverage, deny]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

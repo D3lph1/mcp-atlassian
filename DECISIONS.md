@@ -962,3 +962,22 @@ through the `logging` capability (HANDOFF-PLAN §6.5). rmcp marks the whole
 capability deprecated — SEP-2577 removes it from the protocol — so a model
 that needs to know about a retry will keep learning it from the tool's
 error text (D13).
+
+## D45. Release: five binaries from CI, coverage on Coveralls
+The client that runs this server is a desktop app on someone's laptop, so
+the binary has to exist for that laptop: CI builds `x86_64` and `aarch64`
+for Linux (musl, static — one file for any distribution and the scratch
+image) and macOS, and `x86_64` for Windows, all with the `http` feature. A
+`v*` tag turns them into a GitHub release with checksums. Linux `aarch64`
+cross-compiles with `taiki-e/setup-cross-toolchain-action`; macOS builds
+both targets on the arm64 runner, which Apple's toolchain supports.
+
+Coverage goes to Coveralls, which accepts the workflow's own `GITHUB_TOKEN`
+for a public repository — no secret to manage, one badge in the README next
+to the CI status. The 85% floor stays in the same step, so a drop fails the
+build before it reaches the badge. Codecov was the alternative and now needs
+a token for every upload.
+
+`--version` and `--help` are the only flags; everything else is the
+environment (D8). No clap: two string matches before the configuration is
+read, so they work on an unconfigured machine.
