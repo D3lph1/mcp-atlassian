@@ -51,6 +51,13 @@ binaries by `Dockerfile.ci` — no emulated build; the tag is `X.Y.Z`/`X.Y`/
 `Dockerfile` stays the self-contained local build; keep its runtime stage
 identical to the CI one.
 
+All five crates are published on crates.io under the `mcp-atlassian-`
+prefix (D15). Each keeps its own `README.md` and `LICENSE` inside its
+directory — cargo packages nothing from outside one, so the root copies do
+not travel. Publishing is `cargo publish --workspace`, which orders the
+crates itself; bump `version` in the root `Cargo.toml` first, since all
+five share it.
+
 Release build (size-optimized, see profile in Cargo.toml):
 
 ```bash

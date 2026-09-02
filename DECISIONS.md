@@ -1041,7 +1041,7 @@ read, so they work on an unconfigured machine.
 The status and backlog used to live in two handoff files; they were folded
 in here and removed, so there is one document to keep true.
 
-**Where things stand (2026-09-03).** 0.1.1 is released; 0.1.0 was the first
+**Where things stand (2026-09-03).** 0.1.1 is released and on crates.io; 0.1.0 was the first
 tag, and 0.1.1 carries the startup-output ordering (D29) and the CI move off
 the actions still running on Node 20. Both tags went green through the whole
 matrix: five binaries on the GitHub release with checksums, and
@@ -1075,9 +1075,11 @@ on writes: no write tool changes anything the cache holds. A CHANGELOG:
 release notes are generated from commits.
 
 **Open, in rough order of value.**
-- Publish to crates.io: the path dependencies already carry versions;
-  publish client → mcp-atlassian-storage-markdown → jira → confluence → server. Then a
-  Homebrew formula.
+- A Homebrew formula. crates.io itself is done: all five crates are
+  published at 0.1.1, so `cargo install mcp-atlassian --features http`
+  works. Each carries the `mcp-atlassian-` prefix (D15), its own README and
+  a copy of the MIT text — cargo packages only what sits inside a crate
+  directory, so the root copies of both never reached the archives.
 - `--list-tools`, so a user can see the surface without configuring.
 - A `jira_release_notes` prompt (fixVersion → grouped summaries).
 - JSM (Service Management) requests and queues; Jira `move_issue` across
