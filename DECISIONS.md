@@ -152,6 +152,30 @@ free win: `strip = true` costs symbol names in a backtrace, `panic = "abort"`
 costs unwinding and `catch_unwind`. If a rare production panic ever needs
 diagnosing, `strip = false` buys the names back for about 1 MB.
 
+The released binaries differ across architectures by more than the profile
+explains, and the reason is worth writing down once so the next person does
+not go looking for a regression. On 0.1.0, `x86_64-unknown-linux-musl` is
+6.41 MB against 4.83 MB for `aarch64-unknown-linux-musl`. Section sizes put
+581 KB of the 1.6 MB into `.rela.dyn` and the rest, about 1030 KB, into
+`.text`.
+
+The relocations are a linking difference, not a code difference: the x86_64
+musl target sets `static-position-independent-executables`, so its binary is
+a static PIE (`ET_DYN`, ~24 800 relocations), while the aarch64 musl target
+does not and links a plain `ET_EXEC` with none. That is upstream Rust target
+configuration, not something this repository chose. It also means the aarch64
+binary runs without ASLR — acceptable for a process a desktop client spawns
+over stdio, and fixable with `-C link-arg=-static-pie` at the cost of those
+same 581 KB, if the cross linker accepts it.
+
+The `.text` difference is the architecture plus the cost of position
+independence. AArch64 spends exactly four bytes per instruction; x86-64
+averages more and needs more instructions in places, and its functions are
+aligned to 16 bytes rather than four. This project has an unusual number of
+small functions — 70 tools, each wrapped three times and boxed once per
+projected router (D21) — so alignment padding accumulates. Neither number
+indicates that LTO failed; without it the figures would be megabytes apart.
+
 ## D13. Errors: anyhow internally, typed mapping outward
 HTTP 401/403/404/429 map to MCP errors with actionable text ("check
 JIRA_API_TOKEN", "issue PROJ-1 not found"). 429 respects `Retry-After` and is
@@ -987,11 +1011,19 @@ read, so they work on an unconfigured machine.
 The status and backlog used to live in two handoff files; they were folded
 in here and removed, so there is one document to keep true.
 
-**Where things stand (2026-09-02).** 70 tools (40 Jira, 30 Confluence),
-four prompts, four resource templates, `issue_key` completion. 245 tests
-against wiremock and an in-memory MCP transport, 90.4% line coverage gated
-at 85, clippy and cargo-deny clean. Release binary on aarch64-apple-darwin:
-3.85 MB stdio, 4.22 MB with `http`; idle RSS ~2 MB against a 30 MB target.
+**Where things stand (2026-09-03).** 0.1.0 is released. The CI matrix ran
+green on a tag: five binaries on the GitHub release with checksums, and
+`ghcr.io/d3lph1/mcp-atlassian` published as a two-platform image
+(`linux/amd64`, `linux/arm64`, D47) tagged `0.1.0`, `0.1` and `latest`. The
+image is 5.07 MB and `docker run --rm ghcr.io/d3lph1/mcp-atlassian:latest
+--version` answers `mcp-atlassian 0.1.0`.
+
+70 tools (40 Jira, 30 Confluence), four prompts, four resource templates,
+`issue_key` completion. 245 tests against wiremock and an in-memory MCP
+transport, 90.4% line coverage gated at 85, clippy and cargo-deny clean.
+Release binary on aarch64-apple-darwin: 3.85 MB stdio, 4.22 MB with `http`;
+from CI, 4.83 MB for aarch64 musl and 6.41 MB for x86_64 musl (the spread is
+explained in D12). Idle RSS ~2 MB against a 30 MB target.
 `cargo bloat --crates` on the unstripped http build: std 419 KB,
 `mcp_atlassian` 292 KB, rmcp 244 KB, rustls 175 KB. The 292 KB are mostly
 the projected routers (D21) — one boxed closure per tool per wrapper — and
@@ -1023,14 +1055,14 @@ release notes are generated from commits.
 - The audit append is a blocking write on the runtime thread (D23); wrap it
   in `spawn_blocking` if the log ever goes to a network filesystem.
 
-**Verify on a live instance.** Three things wiremock cannot: the createmeta
-per-issue-type path (D34) on a Data Center older than 8.4; Confluence
+**Verify on a live instance.** Two things wiremock cannot: the createmeta
+per-issue-type path (D34) on a Data Center older than 8.4, and Confluence
 attachment downloads under OAuth, where the gateway's handling of
-`/wiki/download/…` is unverified (D33); and the CI matrix's first run —
-Linux aarch64 cross-compilation, macOS x86_64, Windows — plus the Coveralls
-upload, which needs `COVERALLS_REPO_TOKEN` for a private repository (D45).
-The Docker image has not been built on the development machine either; the
-CI job covers it.
+`/wiki/download/…` is unverified (D33). The rest of this list is now
+settled: the CI matrix's first run took Linux aarch64 cross-compilation,
+macOS x86_64 and Windows on the first attempt, Coveralls accepted the
+workflow's own token, and both the local and the published Docker images
+have been built and run.
 
 ## D47. The published image is assembled, not compiled, in CI
 `docker build .` compiles the server inside `rust:1-alpine`, which is right
