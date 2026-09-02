@@ -34,6 +34,7 @@ async fn main() -> anyhow::Result<()> {
             confluence = config.confluence.is_some(),
             read_only = config.read_only,
             dry_run = config.dry_run,
+            confirm_destructive = config.confirm_destructive,
             tools = tools.len(),
             "starting mcp-atlassian"
         );

@@ -67,8 +67,9 @@ pub struct GetBoardIssuesArgs {
 #[tool_router(router = jira_agile_router, vis = "pub(crate)")]
 impl JiraTools {
     #[tool(
+        title = "List Jira boards",
         description = "List Jira agile boards (scrum/kanban), optionally filtered by project key. Use to find board ids for sprint tools.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_boards(
         &self,
@@ -83,8 +84,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "List Jira sprints",
         description = "List sprints of a Jira agile board. Filter by state (active/future/closed) to keep output small.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_sprints(
         &self,
@@ -104,8 +106,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "List Jira sprint issues",
         description = "List issues in a Jira sprint with a compact field set.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_sprint_issues(
         &self,
@@ -125,8 +128,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Move Jira issues to sprint",
         description = "Move Jira issues into a sprint (max 50 issue keys per call).",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn jira_move_to_sprint(
         &self,
@@ -144,8 +153,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "List Jira board issues",
         description = "List issues on a Jira agile board, optionally narrowed by JQL. Unlike jira_search this respects the board's own filter, so it shows what the board actually displays.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_board_issues(
         &self,

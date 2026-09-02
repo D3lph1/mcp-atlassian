@@ -54,8 +54,9 @@ pub struct LinkToEpicArgs {
 #[tool_router(router = jira_links_router, vis = "pub(crate)")]
 impl JiraTools {
     #[tool(
+        title = "List Jira issue link types",
         description = "List available Jira issue link types with their inward/outward phrasing. Call before jira_create_issue_link to pick a valid type name and get the direction right.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_link_types(&self) -> Result<Json<ListResult<LinkType>>, McpError> {
         let types = self.client().get_link_types().await.map_err(to_mcp_error)?;
@@ -63,8 +64,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Link Jira issues",
         description = "Link two Jira issues, e.g. mark one as blocking another. Direction follows the link type's phrasing: for `Blocks`, outward_issue blocks inward_issue.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn jira_create_issue_link(
         &self,
@@ -86,8 +93,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Remove Jira issue link",
         description = "Remove a link between two Jira issues by its link id.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn jira_remove_issue_link(
         &self,
@@ -101,8 +114,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Add remote link to Jira issue",
         description = "Attach an external URL to a Jira issue as a remote link — a Confluence page, a pull request, a dashboard.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn jira_create_remote_link(
         &self,
@@ -122,8 +141,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Link Jira issue to epic",
         description = "Put a Jira issue under an epic. Uses the parent field on Cloud and the Epic Link custom field on Server/Data Center.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn jira_link_to_epic(
         &self,

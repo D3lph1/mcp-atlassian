@@ -153,6 +153,9 @@ fn mode(config: &Config) -> Span {
     if config.dry_run {
         flags.push("dry-run");
     }
+    if config.confirm_destructive {
+        flags.push("confirm-destructive");
+    }
     if flags.is_empty() {
         span("read-write", PLAIN)
     } else {

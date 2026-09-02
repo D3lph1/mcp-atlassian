@@ -57,7 +57,15 @@ async fn templates_describe_both_products() {
 
     let templates = client.list_all_resource_templates().await.unwrap();
     let uris: Vec<&str> = templates.iter().map(|t| t.uri_template.as_str()).collect();
-    assert_eq!(uris, ["jira://{issue_key}", "confluence://{page_id}"]);
+    assert_eq!(
+        uris,
+        [
+            "jira://{issue_key}",
+            "jira://{issue_key}/comments",
+            "confluence://{page_id}",
+            "confluence://{page_id}/comments"
+        ]
+    );
     for template in &templates {
         assert!(template.description.is_some(), "{template:?}");
         assert!(template.mime_type.is_some(), "{template:?}");
@@ -87,7 +95,7 @@ async fn only_configured_products_contribute_templates() {
     .await;
 
     let templates = client.list_all_resource_templates().await.unwrap();
-    assert_eq!(templates.len(), 1);
+    assert_eq!(templates.len(), 2);
     assert_eq!(templates[0].uri_template, "jira://{issue_key}");
     client.cancel().await.unwrap();
 }
@@ -190,7 +198,7 @@ async fn unknown_and_malformed_uris_are_rejected_with_the_expected_shape() {
     for (uri, expected) in [
         ("ftp://somewhere", "jira://ISSUE-KEY"),
         ("jira://", "jira://PROJ-123"),
-        ("jira://PROJ-1/comments", "jira://PROJ-123"),
+        ("jira://PROJ-1/watchers", "jira://PROJ-123"),
         ("confluence://123/children", "confluence://123456"),
     ] {
         let error = client
@@ -216,7 +224,7 @@ async fn resources_follow_the_tool_allowlist() {
     .await;
 
     let templates = client.list_all_resource_templates().await.unwrap();
-    assert_eq!(templates.len(), 1);
+    assert_eq!(templates.len(), 2);
     assert_eq!(templates[0].uri_template, "confluence://{page_id}");
 
     let error = client
@@ -243,5 +251,55 @@ async fn an_unconfigured_product_says_so() {
         .unwrap_err()
         .to_string();
     assert!(error.contains("CONFLUENCE_URL"), "{error}");
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn comments_are_a_sub_resource_of_both_products() {
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/rest/api/2/issue/PROJ-1/comment"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "comments": [{ "id": "5", "body": "first!", "created": "2026-01-01T00:00:00.000+0000" }],
+            "total": 1
+        })))
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/rest/api/content/123/child/comment"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "results": [{ "id": "9", "type": "comment", "title": "", "body": { "storage": { "value": "<p>looks <em>stale</em></p>" } } }],
+            "size": 1
+        })))
+        .mount(&mock)
+        .await;
+    let client = connect(config(&mock)).await;
+
+    let templates = client.list_all_resource_templates().await.unwrap();
+    assert!(templates
+        .iter()
+        .any(|t| t.uri_template == "jira://{issue_key}/comments"));
+    assert!(templates
+        .iter()
+        .any(|t| t.uri_template == "confluence://{page_id}/comments"));
+
+    let result = client
+        .read_resource(ReadResourceRequestParams::new("jira://PROJ-1/comments"))
+        .await
+        .unwrap();
+    let (text, mime) = text_of(&result.contents[0]);
+    assert_eq!(mime, "application/json");
+    let page: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(page["comments"][0]["body"], "first!");
+
+    let result = client
+        .read_resource(ReadResourceRequestParams::new("confluence://123/comments"))
+        .await
+        .unwrap();
+    let (text, mime) = text_of(&result.contents[0]);
+    assert_eq!(mime, "text/markdown");
+    assert!(text.contains("## Comment 9"), "{text}");
+    assert!(text.contains("stale"), "{text}");
+    assert!(!text.contains("<em>"), "storage was not converted: {text}");
     client.cancel().await.unwrap();
 }

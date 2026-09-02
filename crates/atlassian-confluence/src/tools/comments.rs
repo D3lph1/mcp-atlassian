@@ -65,8 +65,14 @@ pub struct AddInlineCommentArgs {
 #[tool_router(router = confluence_comments_router, vis = "pub(crate)")]
 impl ConfluenceTools {
     #[tool(
+        title = "Add Confluence comment",
         description = "Add a comment to a Confluence page. Content is Markdown by default; pass content_format=\"storage\" for raw storage XHTML.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn confluence_add_comment(
         &self,
@@ -82,8 +88,9 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Get Confluence comments",
         description = "Get comments of a Confluence page, bodies converted to Markdown.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_comments(
         &self,
@@ -104,8 +111,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Reply to Confluence comment",
         description = "Reply to an existing Confluence comment, keeping the thread together.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn confluence_reply_to_comment(
         &self,
@@ -121,8 +134,9 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Get Confluence inline comments",
         description = "Get inline comments of a Confluence page — the ones anchored to specific text rather than to the page as a whole.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_inline_comments(
         &self,
@@ -138,8 +152,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Add Confluence inline comment",
         description = "Add a comment anchored to a specific passage of a Confluence page. text_selection must match the page text exactly.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn confluence_add_inline_comment(
         &self,

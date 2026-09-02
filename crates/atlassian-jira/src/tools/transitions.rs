@@ -30,8 +30,9 @@ pub struct TransitionIssueArgs {
 #[tool_router(router = jira_transitions_router, vis = "pub(crate)")]
 impl JiraTools {
     #[tool(
+        title = "List Jira transitions",
         description = "List available status transitions for a Jira issue. Call this before jira_transition_issue to get valid transition ids.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_transitions(
         &self,
@@ -46,8 +47,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Transition Jira issue",
         description = "Move a Jira issue to another status by applying a transition. Get valid transition ids from jira_get_transitions first.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn jira_transition_issue(
         &self,

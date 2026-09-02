@@ -88,8 +88,9 @@ pub struct GetProjectIssuesArgs {
 #[tool_router(router = jira_issues_router, vis = "pub(crate)")]
 impl JiraTools {
     #[tool(
+        title = "Get Jira issue",
         description = "Get one Jira issue by key (e.g. PROJ-123): description, status, people, labels, parent, subtasks and issue links. Pass custom field ids in `fields` to read them (resolve ids with jira_search_fields).",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_issue(
         &self,
@@ -104,8 +105,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Create Jira issue",
         description = "Create a Jira issue. Requires project key, issue type name and summary. Use jira_get_issue_types to discover valid issue type names.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn jira_create_issue(
         &self,
@@ -130,8 +137,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Update Jira issue",
         description = "Update fields of an existing Jira issue. Pass a raw `fields` object, e.g. {\"summary\": \"New title\", \"description\": \"...\", \"labels\": [\"a\"]}. To change status use jira_transition_issue instead.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn jira_update_issue(
         &self,
@@ -145,8 +158,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Delete Jira issue",
         description = "Delete a Jira issue permanently. This cannot be undone — confirm with the user before calling.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn jira_delete_issue(
         &self,
@@ -160,8 +179,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Batch create Jira issues",
         description = "Create several Jira issues in one request. Each entry is a raw `fields` object, so custom fields pass through unchanged. Returns created issues and per-entry errors separately.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn jira_batch_create_issues(
         &self,
@@ -176,8 +201,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Get Jira issue changelog",
         description = "Get the change history of a Jira issue — who changed which field, from what to what, and when. Use it to answer questions about how an issue reached its current state.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_changelog(
         &self,
@@ -192,8 +218,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "List Jira project issues",
         description = "List issues of a Jira project, newest first. A shortcut for the common `project = X` query; use jira_search when you need any other filter.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_project_issues(
         &self,

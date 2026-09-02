@@ -119,6 +119,9 @@ pub struct Config {
     /// When true, write tools stay registered but are described instead of
     /// performed (D26). Orthogonal to `read_only`, which removes them.
     pub dry_run: bool,
+    /// When true, destructive tools ask the user through MCP elicitation
+    /// before running (D42).
+    pub confirm_destructive: bool,
     /// Path of the JSONL audit log for write operations. `None` disables it.
     pub audit_log: Option<PathBuf>,
     /// How long reference data (projects, issue types, boards, spaces, field
@@ -149,6 +152,7 @@ impl Default for Config {
             disabled_tools: None,
             read_only: false,
             dry_run: false,
+            confirm_destructive: false,
             audit_log: None,
             cache_ttl: None,
             transport: Transport::Stdio,
@@ -228,6 +232,7 @@ impl Config {
                 .and_then(|raw| ToolFilter::parse(&raw)),
             read_only: flag(env, "READ_ONLY"),
             dry_run: flag(env, "DRY_RUN"),
+            confirm_destructive: flag(env, "CONFIRM_DESTRUCTIVE"),
             audit_log: path(env, "AUDIT_LOG_FILE"),
             cache_ttl: parse_cache_ttl(env.get("CACHE_TTL").as_deref())?,
             transport: transport(env)?,
@@ -646,6 +651,7 @@ mod tests {
             ("JIRA_PERSONAL_TOKEN", "pat"),
             ("READ_ONLY", "yes"),
             ("DRY_RUN", "0"),
+            ("CONFIRM_DESTRUCTIVE", "1"),
             ("NO_BANNER", "true"),
             ("ENABLED_TOOLS", "jira_*"),
             ("DISABLED_TOOLS", " , "),
@@ -658,6 +664,7 @@ mod tests {
         .unwrap();
         assert!(config.read_only);
         assert!(!config.dry_run);
+        assert!(config.confirm_destructive);
         assert!(!config.banner);
         assert!(config.enabled_tools.unwrap().matches("jira_search"));
         assert!(config.disabled_tools.is_none());

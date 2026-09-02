@@ -255,3 +255,34 @@ async fn no_tool_passes_an_uncapped_page_size_to_atlassian() {
     // above would silently check nothing.
     assert!(checked >= 10, "only {checked} page sizes were inspected");
 }
+
+#[tokio::test]
+async fn every_tool_says_what_it_is_in_its_annotations() {
+    // Clients render `title` in permission prompts, decide retries from
+    // `idempotentHint`, and treat `openWorldHint` as "may touch things
+    // outside the instance" — every tool answers all three, and an
+    // unannotated write cannot slip in (D42).
+    let (_mock, client) = connect().await;
+    for tool in client.list_all_tools().await.unwrap() {
+        let name = tool.name.as_ref();
+        let title = tool.title.as_deref().unwrap_or_default();
+        assert!(!title.is_empty(), "{name}: no title");
+        assert!(
+            title.contains("Jira") || title.contains("Confluence"),
+            "{name}: title `{title}` does not name the product"
+        );
+        let annotations = tool.annotations.as_ref().expect("annotated");
+        assert_eq!(
+            annotations.open_world_hint,
+            Some(false),
+            "{name}: openWorldHint must be false — a closed Atlassian instance"
+        );
+        if annotations.read_only_hint != Some(true) {
+            assert!(
+                annotations.idempotent_hint.is_some(),
+                "{name}: a write must say whether it is idempotent"
+            );
+        }
+    }
+    client.cancel().await.unwrap();
+}

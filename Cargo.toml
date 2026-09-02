@@ -33,7 +33,7 @@ url = "2"
 tracing = "0.1"
 # No `env-filter`: `Targets` parses RUST_LOG without pulling in regex.
 tracing-subscriber = "0.3"
-rmcp = { version = "3", default-features = false, features = ["server", "macros", "transport-io"] }
+rmcp = { version = "3", default-features = false, features = ["server", "macros", "transport-io", "elicitation"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 schemars = "1"
 # Already in the tree via rmcp with the same features — timestamps only (D23).

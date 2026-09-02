@@ -326,7 +326,7 @@ policy, or Jira < 8.14). Add `JIRA_DEPLOYMENT=cloud|server` /
 
 ---
 
-## 6. MCP surface (P2)
+## 6. MCP surface (P2) — **done in phase 9 (D42–D44)**, except 6.5 (deprecated upstream)
 
 ### 6.1 Tool `title`, `idempotent_hint`, `open_world_hint`
 rmcp 3.2 supports all three (`model/tool.rs:22, 82, 91`; the `#[tool]` macro
@@ -361,7 +361,7 @@ the changelog), `jira_triage` (unassigned bugs by priority), `jira_release_notes
 (fixVersion → grouped summaries), `confluence_page` (brief on a page with its
 newest comments). Each fetches its own data and ends with a bounded ask.
 
-### 6.5 Logging capability
+### 6.5 Logging capability — **withdrawn**: rmcp deprecates it (SEP-2577 removes logging from MCP)
 Forward `tracing` WARN/ERROR to the client as `notifications/message`
 (rmcp `enable_logging`). A model that sees "rate limited, retrying" behaves
 differently from one that sees a 30 s silence.
@@ -373,7 +373,7 @@ once 1.2 lands, and they are what a client attaches after the issue itself.
 
 ---
 
-## 7. Content conversion (P2) — code macro both ways, `unsafe_` and the round-trip test are **done**; other macros remain
+## 7. Content conversion (P2) — **done** (D36, D43)
 
 `storage-markdown` is the thinnest crate (116 lines) for the most visible
 output. Three things a page usually has that currently vanish:
@@ -468,7 +468,7 @@ missing:
 | 6 ✅ | Correctness on real instances | 1.1–1.8, 4 (pagination, worklog/labels caps, changelog), 5.7, 7 (comrak `unsafe_`, code macro) | done 2026-09-02 |
 | 7 ✅ | Hardening + footprint | 2.1–2.5, 3.1–3.4, 5.2–5.4 (config), 8 (retries, token persistence) | done 2026-09-02 |
 | 8 ✅ | Deployment correctness + size | 5.5, 5.6, 5.8, 5.9, 3.5, coverage floor to 85 | done 2026-09-02 |
-| 9 | MCP surface | 6.1–6.6, remaining 7 (macro reading), 9 | ~3 days |
+| 9 ✅ | MCP surface | 6.1–6.6, remaining 7 (macro reading), 9 | done 2026-09-02 |
 | 10 | Release | 10 | ~1 day |
 
 Phase 6 first because 1.1 and 1.3 are the two tools a Confluence user

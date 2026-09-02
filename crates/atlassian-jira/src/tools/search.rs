@@ -28,8 +28,9 @@ pub struct SearchArgs {
 #[tool_router(router = jira_search_router, vis = "pub(crate)")]
 impl JiraTools {
     #[tool(
+        title = "Search Jira issues (JQL)",
         description = "Search Jira issues with JQL. Use this first when looking for issues; keep max_results at 10 or less unless more are needed. Returns a compact field set by default.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_search(
         &self,

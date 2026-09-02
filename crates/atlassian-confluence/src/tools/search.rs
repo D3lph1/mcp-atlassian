@@ -23,8 +23,9 @@ pub struct ConfluenceSearchArgs {
 #[tool_router(router = confluence_search_router, vis = "pub(crate)")]
 impl ConfluenceTools {
     #[tool(
+        title = "Search Confluence (CQL)",
         description = "Search Confluence content with CQL, e.g. `space = DEV AND title ~ \"runbook\"` or `text ~ \"deploy process\"`. Use this first when looking for pages; keep limit at 10 or less.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_search(
         &self,

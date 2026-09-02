@@ -28,14 +28,18 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
 - Markdown ↔ Confluence storage (htmd/comrak, D10)
 - Structured output: every tool advertises an `outputSchema` and returns
   `structuredContent` (D20)
-- Resources: `jira://PROJ-123` (JSON) and `confluence://123456` (Markdown) as
-  resource templates; `resources/list` intentionally empty (D24)
-- Prompts: `/jira_issue PROJ-123` briefs on a ticket — fetches the issue and
-  its newest comments, then asks for a plan (D30)
+- Resources: `jira://PROJ-123` (JSON), `confluence://123456` (Markdown) and
+  their `/comments` sub-resources; `resources/list` intentionally empty
+  (D24, D44); `issue_key` completion for prompts and templates
+- Prompts: `/jira_issue`, `/jira_triage`, `/jira_standup`, `/confluence_page`
+  — each fetches its own data, then asks (D30)
+- Tool annotations: `title`, `readOnlyHint`, `destructiveHint`,
+  `idempotentHint`, `openWorldHint` on all 70; `CONFIRM_DESTRUCTIVE` asks
+  through elicitation (D42)
 - TTL cache: `CACHE_TTL` seconds, reference data only (projects, issue types,
   boards, link types, fields, spaces), off by default (D25)
-- Tests: 225 (wiremock + end-to-end over an in-memory transport, plus the
-  HTTP transport over a real socket), coverage ~90% by line gated at 85,
+- Tests: 245 (wiremock + end-to-end over an in-memory transport, plus the
+  HTTP transport over a real socket), coverage 90.4% by line gated at 85,
   clippy clean; CI (fmt/clippy/test, cargo-deny, musl artifact, docker,
   coverage gate); scratch Dockerfile
 - Binary (aarch64-apple-darwin, release): 3.85 MB stdio / 4.22 MB with
@@ -66,12 +70,10 @@ Known loose ends:
       templates (D24). Possible follow-ups: sub-resources
       (`jira://PROJ-1/comments`), and `resources/list` seeded from recently
       updated items if a client turns out to need a non-empty list.
-- [x] **Prompts** — `jira_issue` (brief on a ticket) landed, D30. Still to
-      write, same shape: sprint standup, bug triage, release notes from JQL,
-      and a Confluence one once `confluence::prompts` exists.
-- [ ] **Elicitation** — confirmation for destructive tools through the client.
-      `destructiveHint` is already set on all 14 of them (D22), so this is now
-      just wiring the elicitation round-trip.
+- [x] **Prompts** — `jira_issue`, `jira_triage`, `jira_standup`,
+      `confluence_page` (D30). Still possible: release notes from a
+      fixVersion.
+- [x] **Elicitation** — `CONFIRM_DESTRUCTIVE`, D42.
 
 ### Security / operations
 - [x] Audit log of write operations (JSONL to a file) — `AUDIT_LOG_FILE`, D23
@@ -97,6 +99,15 @@ product is planned, so no generalisation of the server crate for one
 - [ ] Homebrew formula
 
 ## Notes
+
+**Phase 9 (2026-09-02, D42–D44).** MCP surface: `title` / `idempotentHint`
+/ `openWorldHint` on every tool with an invariant in `every_tool.rs`;
+`CONFIRM_DESTRUCTIVE` elicitation wrapper, capability-checked; comments
+sub-resources for both products; `issue_key` completion; prompts
+`jira_triage`, `jira_standup`, `confluence_page` (Confluence gained its
+`prompts` module); storage-markdown reads panels, links, images, task lists,
+expand, status, jira and toc macros. Not done: the `logging` capability —
+deprecated by SEP-2577, rmcp warns on every use.
 
 **Phase 8 (2026-09-02, D41).** `JIRA_DEPLOYMENT` / `CONFLUENCE_DEPLOYMENT`
 override the auth-mode inference (Data Center behind Basic auth);
@@ -183,8 +194,9 @@ on writes — a `create_project` through this server still waits out the TTL.
 
 - `HANDOFF-PLAN.md` — the 2026-09-02 full-codebase review and the phase 6–10
   sequence. Phases 6 (correctness), 7 (hardening + footprint) and 8
-  (deployment correctness + size) are done; phase 9 (MCP surface) is next
-- `DECISIONS.md` — 41 architecture decisions (D1–D41); read before structural
+  (deployment correctness + size) and 9 (MCP surface) are done; phase 10
+  (release) is next
+- `DECISIONS.md` — 44 architecture decisions (D1–D44); read before structural
   changes
 - `CLAUDE.md` — commands, layout, conventions, env vars, roadmap
 - `crates/atlassian-{jira,confluence}/src/tools/` — tools, next to the

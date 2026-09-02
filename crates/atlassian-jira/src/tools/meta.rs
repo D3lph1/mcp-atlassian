@@ -25,8 +25,9 @@ pub struct SearchUsersArgs {
 #[tool_router(router = jira_meta_router, vis = "pub(crate)")]
 impl JiraTools {
     #[tool(
+        title = "Get current Jira user",
         description = "Get the currently authenticated Jira user. Use this to verify credentials or to find the current user's account id / username.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_myself(&self) -> Result<Json<Myself>, McpError> {
         let myself = self.client().get_myself().await.map_err(to_mcp_error)?;
@@ -34,8 +35,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Search Jira users",
         description = "Find Jira users by name or email. Call this to resolve a person's name into the identifier other tools need: the `accountId` on Jira Cloud, the `name` (username) on Server/Data Center. Use it before setting an assignee in jira_create_issue or jira_update_issue, or before writing a JQL clause like `assignee = <id>`.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_search_users(
         &self,
@@ -50,8 +52,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "List Jira projects",
         description = "List Jira projects visible to the authenticated user.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_projects(&self) -> Result<Json<ListResult<Project>>, McpError> {
         let projects = self.client().get_projects().await.map_err(to_mcp_error)?;
@@ -59,8 +62,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "List Jira issue types",
         description = "List all Jira issue types (Task, Bug, Story, ...). Use before jira_create_issue to pick a valid issue type name.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_issue_types(&self) -> Result<Json<ListResult<IssueType>>, McpError> {
         let types = self

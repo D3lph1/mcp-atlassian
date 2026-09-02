@@ -53,8 +53,9 @@ pub struct DeleteAttachmentArgs {
 #[tool_router(router = confluence_attachments_router, vis = "pub(crate)")]
 impl ConfluenceTools {
     #[tool(
+        title = "List Confluence attachments",
         description = "List attachments of a Confluence page (id, filename, size, media type).",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_attachments(
         &self,
@@ -74,8 +75,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Download Confluence attachment",
         description = "Download a Confluence page attachment to a local file. Writes to the local filesystem and overwrites save_path if it exists. Get attachment ids from confluence_get_attachments first.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn confluence_download_attachment(
         &self,
@@ -118,8 +125,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Upload Confluence attachment",
         description = "Upload a local file as an attachment to a Confluence page.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn confluence_upload_attachment(
         &self,
@@ -136,8 +149,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Delete Confluence attachment",
         description = "Delete a Confluence attachment permanently. This cannot be undone — confirm with the user before calling.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn confluence_delete_attachment(
         &self,

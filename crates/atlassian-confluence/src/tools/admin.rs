@@ -69,8 +69,9 @@ pub struct SearchUsersArgs {
 #[tool_router(router = confluence_admin_router, vis = "pub(crate)")]
 impl ConfluenceTools {
     #[tool(
+        title = "List Confluence templates",
         description = "List Confluence page templates, optionally for one space. Call before confluence_create_page_from_template to pick a template id.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_list_templates(
         &self,
@@ -85,8 +86,9 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Get Confluence template",
         description = "Get one Confluence template including its body.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_template(
         &self,
@@ -101,8 +103,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Create Confluence page from template",
         description = "Create a Confluence page from a template. The template's body becomes the page's initial content.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn confluence_create_page_from_template(
         &self,
@@ -133,8 +141,9 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Get Confluence page restrictions",
         description = "Show who may read and edit a Confluence page.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_page_restrictions(
         &self,
@@ -149,8 +158,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Set Confluence page restrictions",
         description = "Replace the read/edit restrictions of a Confluence page. This REPLACES the current lists, it does not add to them — read the current state with confluence_get_page_restrictions first, and confirm with the user, since over-restricting can lock people out.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn confluence_set_page_restrictions(
         &self,
@@ -171,8 +186,9 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Search Confluence users",
         description = "Find Confluence users by name. Use it to resolve a person into the identifier that page restrictions need.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_search_users(
         &self,

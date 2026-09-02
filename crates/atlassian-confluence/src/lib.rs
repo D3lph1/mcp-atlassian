@@ -9,6 +9,8 @@
 mod models;
 
 #[cfg(feature = "mcp")]
+pub mod prompts;
+#[cfg(feature = "mcp")]
 pub mod resources;
 #[cfg(feature = "mcp")]
 pub mod tools;

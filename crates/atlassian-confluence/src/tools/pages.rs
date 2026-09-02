@@ -106,8 +106,9 @@ pub struct UpdateSectionArgs {
 #[tool_router(router = confluence_pages_router, vis = "pub(crate)")]
 impl ConfluenceTools {
     #[tool(
+        title = "Get Confluence page",
         description = "Get a Confluence page by id, with its body converted to Markdown. Find page ids via confluence_search.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_page(
         &self,
@@ -122,8 +123,9 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "List Confluence page children",
         description = "List direct child pages of a Confluence page.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_page_children(
         &self,
@@ -143,8 +145,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Create Confluence page",
         description = "Create a Confluence page. Content is Markdown by default (converted to Confluence storage format); pass content_format=\"storage\" to send raw storage XHTML.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn confluence_create_page(
         &self,
@@ -165,8 +173,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Update Confluence page",
         description = "Update a Confluence page's title and/or content. Content is Markdown by default; pass content_format=\"storage\" for raw storage XHTML. Omitted parts stay unchanged. Note: Markdown content REPLACES the whole page body.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn confluence_update_page(
         &self,
@@ -186,8 +200,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Delete Confluence page",
         description = "Delete a Confluence page permanently. This cannot be undone — confirm with the user before calling.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn confluence_delete_page(
         &self,
@@ -201,8 +221,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Move Confluence page",
         description = "Move a Confluence page under a different parent and/or into another space. Content and title are preserved.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn confluence_move_page(
         &self,
@@ -227,8 +253,9 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Get Confluence space page tree",
         description = "Get the page hierarchy of a Confluence space as a tree of ids and titles (up to 50 pages; `truncated` says when there are more). Use it to understand how a space is organized before reading individual pages.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_space_page_tree(
         &self,
@@ -247,8 +274,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Update Confluence page section",
         description = "Replace one section of a Confluence page, identified by its heading text, leaving the rest of the page untouched (macros included). The section runs from that heading to the next heading of the same or higher level. Prefer this over confluence_update_page when editing part of a long document.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn confluence_update_page_section(
         &self,

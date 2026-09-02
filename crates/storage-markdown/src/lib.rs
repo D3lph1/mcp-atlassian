@@ -27,8 +27,14 @@ const DIFF_CONTEXT_LINES: usize = 3;
 const DIFF_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Converts Confluence storage format (XHTML) to Markdown.
+///
+/// The common macros are rewritten to plain HTML first (D43): `code` to a
+/// fenced block, panels to a labelled blockquote, page and attachment
+/// links to their titles, images to `![name]`, task lists to `- [ ]`,
+/// `expand` to its body under its title, `toc`/`status`/`jira` to a short
+/// marker. Anything else degrades to its text content.
 pub fn storage_to_markdown(storage: &str) -> String {
-    let html = code_macros_to_html(storage);
+    let html = macros_to_html(storage);
     htmd::convert(&html).unwrap_or_else(|_| storage.to_string())
 }
 
@@ -225,46 +231,242 @@ fn encode_entities(text: &str) -> String {
 const MACRO_OPEN: &str = "<ac:structured-macro";
 const MACRO_CLOSE: &str = "</ac:structured-macro>";
 
-/// Rewrites every `code` macro into `<pre><code class="language-X">`, which
-/// `htmd` turns into a fenced block. Other macros are left for `htmd` to
-/// degrade to text.
-fn code_macros_to_html(storage: &str) -> String {
+/// One `<ac:structured-macro>` element, taken apart.
+struct Macro<'a> {
+    name: &'a str,
+    /// `<ac:parameter ac:name="…">` values, by name.
+    params: Vec<(&'a str, &'a str)>,
+    /// Inside `<ac:rich-text-body>`, still XHTML.
+    rich_body: Option<&'a str>,
+    /// Inside `<ac:plain-text-body>`, CDATA unwrapped.
+    plain_body: Option<String>,
+}
+
+impl<'a> Macro<'a> {
+    fn param(&self, name: &str) -> Option<&'a str> {
+        self.params
+            .iter()
+            .find(|(k, _)| *k == name)
+            .map(|(_, v)| v.trim())
+    }
+}
+
+fn parse_macro<'a>(open_tag: &'a str, inner: &'a str) -> Macro<'a> {
+    let name = between(open_tag, "ac:name=\"", "\"").unwrap_or("");
+    let mut params = Vec::new();
+    let mut rest = inner;
+    while let Some(at) = rest.find("<ac:parameter") {
+        let candidate = &rest[at..];
+        let Some(open_end) = candidate.find('>') else {
+            break;
+        };
+        let Some(close_at) = candidate.find("</ac:parameter>") else {
+            break;
+        };
+        let key = between(&candidate[..open_end], "ac:name=\"", "\"").unwrap_or("");
+        params.push((key, &candidate[open_end + 1..close_at]));
+        rest = &candidate[close_at..];
+    }
+    Macro {
+        name,
+        params,
+        rich_body: between(inner, "<ac:rich-text-body>", "</ac:rich-text-body>"),
+        plain_body: between(inner, "<ac:plain-text-body>", "</ac:plain-text-body>")
+            .map(cdata_content),
+    }
+}
+
+/// Rewrites the macros `htmd` cannot read into HTML it can (D43). Nested
+/// macros are handled by rewriting the inner body first.
+fn macros_to_html(storage: &str) -> String {
     let mut out = String::with_capacity(storage.len());
     let mut rest = storage;
     while let Some(at) = rest.find(MACRO_OPEN) {
-        out.push_str(&rest[..at]);
+        out.push_str(&links_and_images_to_html(&rest[..at]));
         let candidate = &rest[at..];
         let Some(open_end) = candidate.find('>') else {
             out.push_str(candidate);
             return out;
         };
-        let is_code = candidate[..open_end].contains("ac:name=\"code\"");
-        let Some(close_at) = candidate.find(MACRO_CLOSE) else {
+        // `<ac:structured-macro ac:name="toc"/>` has no body and no close.
+        let (inner, element_end) = if candidate[..open_end].ends_with('/') {
+            ("", open_end + 1)
+        } else {
+            let Some(close_at) = find_matching_close(candidate, open_end + 1) else {
+                out.push_str(candidate);
+                return out;
+            };
+            (
+                &candidate[open_end + 1..close_at],
+                close_at + MACRO_CLOSE.len(),
+            )
+        };
+        let m = parse_macro(&candidate[..open_end], inner);
+        out.push_str(&render_macro(&m));
+        rest = &candidate[element_end..];
+    }
+    out.push_str(&links_and_images_to_html(rest));
+    out
+}
+
+/// The byte offset of the `</ac:structured-macro>` that closes the element
+/// whose open tag ends at `from`, counting nested macros.
+fn find_matching_close(text: &str, from: usize) -> Option<usize> {
+    let mut depth = 1;
+    let mut at = from;
+    loop {
+        let next_open = text[at..].find(MACRO_OPEN).map(|i| at + i);
+        let next_close = text[at..].find(MACRO_CLOSE).map(|i| at + i)?;
+        match next_open {
+            Some(open) if open < next_close => {
+                depth += 1;
+                at = open + MACRO_OPEN.len();
+            }
+            _ => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(next_close);
+                }
+                at = next_close + MACRO_CLOSE.len();
+            }
+        }
+    }
+}
+
+fn render_macro(m: &Macro<'_>) -> String {
+    // Bodies may hold macros of their own (a code block in a panel).
+    let body = || m.rich_body.map(macros_to_html).unwrap_or_default();
+    match m.name {
+        "code" => {
+            let mut html = String::from("<pre><code");
+            if let Some(language) = m.param("language") {
+                html.push_str(&format!(" class=\"language-{language}\""));
+            }
+            html.push('>');
+            html.push_str(&encode_entities(m.plain_body.as_deref().unwrap_or("")));
+            html.push_str("</code></pre>");
+            html
+        }
+        "info" | "note" | "warning" | "tip" | "panel" => {
+            let label = m
+                .param("title")
+                .map(str::to_string)
+                .unwrap_or_else(|| capitalize(m.name));
+            format!(
+                "<blockquote><p><strong>{label}</strong></p>{}</blockquote>",
+                body()
+            )
+        }
+        "expand" => {
+            let title = m.param("title").unwrap_or("Details");
+            format!("<p><strong>{title}</strong></p>{}", body())
+        }
+        "toc" => "<p><em>(table of contents)</em></p>".into(),
+        "status" => format!(
+            "<strong>[{}]</strong>",
+            m.param("title").unwrap_or("STATUS")
+        ),
+        "jira" => {
+            let key = m.param("key").unwrap_or("");
+            format!("<strong>{key}</strong>")
+        }
+        // Everything else: its body, or nothing — the same as `htmd` alone
+        // would have shown, minus the parameter noise.
+        _ => body(),
+    }
+}
+
+fn capitalize(word: &str) -> String {
+    let mut chars = word.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+/// `<ac:link>` with a `ri:page` / `ri:attachment` / `ri:url` inside becomes
+/// an `<a>` or plain text; `<ac:image>` with `ri:attachment` becomes `<img>`;
+/// `<ac:task-list>` becomes a list of `[ ]`/`[x]` items.
+fn links_and_images_to_html(html: &str) -> String {
+    let mut out = replace_elements(html, "<ac:link", "</ac:link>", |open, inner| {
+        let text = between(
+            inner,
+            "<ac:plain-text-link-body>",
+            "</ac:plain-text-link-body>",
+        )
+        .map(cdata_content)
+        .or_else(|| between(inner, "<ac:link-body>", "</ac:link-body>").map(strip_tags));
+        if let Some(title) = between(inner, "ri:content-title=\"", "\"") {
+            let text = text.unwrap_or_else(|| decode_entities(title));
+            return format!("<a href=\"confluence:page:{title}\">{text}</a>");
+        }
+        if let Some(name) = between(inner, "ri:filename=\"", "\"") {
+            return format!(
+                "<a href=\"attachment:{name}\">{}</a>",
+                text.unwrap_or_else(|| name.to_string())
+            );
+        }
+        if let Some(url) = between(inner, "ri:value=\"", "\"") {
+            return format!(
+                "<a href=\"{url}\">{}</a>",
+                text.unwrap_or_else(|| url.to_string())
+            );
+        }
+        let _ = open;
+        text.unwrap_or_default()
+    });
+    out = replace_elements(&out, "<ac:image", "</ac:image>", |open, inner| {
+        let name = between(inner, "ri:filename=\"", "\"")
+            .or_else(|| between(inner, "ri:value=\"", "\""))
+            .unwrap_or("image");
+        let alt = between(open, "ac:alt=\"", "\"").unwrap_or(name);
+        format!("<img src=\"{name}\" alt=\"{alt}\">")
+    });
+    out = replace_elements(&out, "<ac:task-list", "</ac:task-list>", |_, inner| {
+        let items = replace_elements(inner, "<ac:task", "</ac:task>", |_, task| {
+            let done = between(task, "<ac:task-status>", "</ac:task-status>")
+                .is_some_and(|s| s.trim() == "complete");
+            let body = between(task, "<ac:task-body>", "</ac:task-body>").unwrap_or("");
+            // `[x]` would come out of htmd escaped as `\[x\]`; the glyphs
+            // read the same to a model and survive untouched.
+            format!(
+                "<li>{} {}</li>",
+                if done { "☑" } else { "☐" },
+                strip_tags(body).trim()
+            )
+        });
+        format!("<ul>{items}</ul>")
+    });
+    out
+}
+
+/// Replaces each `open…close` element with `render(open_tag, inner)`.
+fn replace_elements(
+    html: &str,
+    open: &str,
+    close: &str,
+    render: impl Fn(&str, &str) -> String,
+) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(at) = rest.find(open) {
+        out.push_str(&rest[..at]);
+        let candidate = &rest[at..];
+        // A self-closing form (`<ac:image … />` never is, but be safe).
+        let (Some(open_end), Some(close_at)) = (candidate.find('>'), candidate.find(close)) else {
             out.push_str(candidate);
             return out;
         };
-        let element_end = close_at + MACRO_CLOSE.len();
-        if is_code {
-            let inner = &candidate[open_end + 1..close_at];
-            let language = between(
-                inner,
-                "<ac:parameter ac:name=\"language\">",
-                "</ac:parameter>",
-            );
-            let body = between(inner, "<ac:plain-text-body>", "</ac:plain-text-body>")
-                .map(cdata_content)
-                .unwrap_or_default();
-            out.push_str("<pre><code");
-            if let Some(language) = language {
-                out.push_str(&format!(" class=\"language-{}\"", language.trim()));
-            }
-            out.push('>');
-            out.push_str(&encode_entities(&body));
-            out.push_str("</code></pre>");
-        } else {
-            out.push_str(&candidate[..element_end]);
+        if close_at < open_end {
+            out.push_str(&candidate[..open_end + 1]);
+            rest = &candidate[open_end + 1..];
+            continue;
         }
-        rest = &candidate[element_end..];
+        out.push_str(&render(
+            &candidate[..open_end],
+            &candidate[open_end + 1..close_at],
+        ));
+        rest = &candidate[close_at + close.len()..];
     }
     out.push_str(rest);
     out
@@ -361,6 +563,39 @@ mod tests {
         assert!(md.contains("```bash"), "got: {md}");
         assert!(md.contains("echo \"<hi>\" && ls"), "got: {md}");
         assert!(md.contains("done"), "got: {md}");
+    }
+
+    #[test]
+    fn panels_links_images_and_tasks_are_readable() {
+        let storage = concat!(
+            "<ac:structured-macro ac:name=\"info\"><ac:parameter ac:name=\"title\">Heads up</ac:parameter>",
+            "<ac:rich-text-body><p>read <ac:link><ri:page ri:content-title=\"Runbook\" /></ac:link> first</p>",
+            "<ac:structured-macro ac:name=\"code\"><ac:plain-text-body><![CDATA[ls -la]]></ac:plain-text-body></ac:structured-macro>",
+            "</ac:rich-text-body></ac:structured-macro>",
+            "<p><ac:image ac:alt=\"diagram\"><ri:attachment ri:filename=\"arch.png\" /></ac:image></p>",
+            "<ac:task-list><ac:task><ac:task-status>complete</ac:task-status><ac:task-body>done thing</ac:task-body></ac:task>",
+            "<ac:task><ac:task-status>incomplete</ac:task-status><ac:task-body>open thing</ac:task-body></ac:task></ac:task-list>",
+            "<ac:structured-macro ac:name=\"toc\"/>",
+            "<p>see <ac:structured-macro ac:name=\"jira\"><ac:parameter ac:name=\"key\">PROJ-7</ac:parameter></ac:structured-macro></p>",
+            "<ac:structured-macro ac:name=\"expand\"><ac:parameter ac:name=\"title\">More</ac:parameter><ac:rich-text-body><p>hidden</p></ac:rich-text-body></ac:structured-macro>",
+        );
+        let md = storage_to_markdown(storage);
+        for expected in [
+            "**Heads up**",
+            "> ",
+            "[Runbook](confluence:page:Runbook)",
+            "```",
+            "ls -la",
+            "![diagram](arch.png)",
+            "☑ done thing",
+            "☐ open thing",
+            "*(table of contents)*",
+            "**PROJ-7**",
+            "**More**",
+            "hidden",
+        ] {
+            assert!(md.contains(expected), "missing {expected:?} in:\n{md}");
+        }
     }
 
     #[test]

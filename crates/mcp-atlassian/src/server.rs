@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::audit::{instrument_writes, AuditLog};
+use crate::confirm::confirm_destructive;
 use crate::dry_run::intercept_writes;
 use crate::router_ext::{project_prompt_router, project_router};
 use atlassian_client::mcp::FileAccess;
@@ -10,9 +11,10 @@ use atlassian_jira::{JiraClient, JiraTools};
 use rmcp::{
     handler::server::router::{prompt::PromptRouter, tool::ToolRouter},
     model::{
-        Implementation, ListResourceTemplatesResult, ListResourcesResult, PaginatedRequestParams,
-        ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, ResourceTemplate,
-        ServerCapabilities, ServerInfo,
+        CompleteRequestParams, CompleteResult, CompletionInfo, Implementation,
+        ListResourceTemplatesResult, ListResourcesResult, PaginatedRequestParams,
+        ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Reference,
+        ResourceTemplate, ServerCapabilities, ServerInfo,
     },
     prompt_handler,
     service::RequestContext,
@@ -155,6 +157,16 @@ impl AtlassianServer {
             tool_router
         };
 
+        // Destructive tools ask first (D42). Inside auditing, so a declined
+        // call is recorded as the error it returns; after dry run, because a
+        // call that will not happen needs no confirmation.
+        let tool_router = if config.confirm_destructive && !config.dry_run {
+            tracing::info!("destructive tools will ask for confirmation through elicitation");
+            confirm_destructive(tool_router)
+        } else {
+            tool_router
+        };
+
         // Auditing wraps the surviving write routes, so a tool pruned above is
         // never logged — it cannot be called in the first place (D23).
         let tool_router = match &config.audit_log {
@@ -198,6 +210,12 @@ impl AtlassianServer {
                 s.jira
                     .as_ref()
                     .expect("jira prompts pruned when unconfigured")
+            });
+        prompt_router +=
+            project_prompt_router(atlassian_confluence::prompts::router(), |s: &Self| {
+                s.confluence
+                    .as_ref()
+                    .expect("confluence prompts pruned when unconfigured")
             });
         for prompt in prompt_router.list_all() {
             let unavailable = (!jira_available && prompt.name.starts_with("jira_"))
@@ -261,6 +279,7 @@ impl ServerHandler for AtlassianServer {
                 .enable_tools()
                 .enable_resources()
                 .enable_prompts()
+                .enable_completions()
                 .build(),
         )
         .with_server_info(Implementation::new(
@@ -271,8 +290,35 @@ impl ServerHandler for AtlassianServer {
             "Tools for Jira and Confluence. Prefer JQL/CQL search tools with small \
              limits (10 or fewer results) before fetching individual entities. \
              Entities can also be attached as resources: `jira://PROJ-123`, \
-             `confluence://123456`.",
+             `jira://PROJ-123/comments`, `confluence://123456`, \
+             `confluence://123456/comments`.",
         )
+    }
+
+    /// Completes `issue_key` wherever a prompt or resource template takes one
+    /// (D44). Other arguments have nothing to offer and answer with nothing.
+    async fn complete(
+        &self,
+        request: CompleteRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<CompleteResult, McpError> {
+        let for_jira = match &request.r#ref {
+            Reference::Prompt(prompt) => prompt.name.starts_with("jira_"),
+            Reference::Resource(template) => template
+                .uri
+                .starts_with(atlassian_jira::resources::URI_PREFIX),
+            // `Reference` is `#[non_exhaustive]`.
+            _ => false,
+        };
+        let values = match (&self.jira, for_jira, request.argument.name.as_str()) {
+            (Some(jira), true, "issue_key") if self.jira_available => {
+                jira.complete_issue_key(&request.argument.value).await
+            }
+            _ => Vec::new(),
+        };
+        let info = CompletionInfo::new(values.into_iter().take(100).collect())
+            .map_err(|e| McpError::internal_error(e, None))?;
+        Ok(CompleteResult::new(info))
     }
 
     /// Always empty: the resources are issues and pages, and enumerating them

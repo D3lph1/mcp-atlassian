@@ -61,8 +61,14 @@ pub struct GetWorklogArgs {
 #[tool_router(router = jira_comments_router, vis = "pub(crate)")]
 impl JiraTools {
     #[tool(
+        title = "Add Jira comment",
         description = "Add a comment to a Jira issue.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn jira_add_comment(
         &self,
@@ -77,8 +83,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Get Jira comments",
         description = "Get comments of a Jira issue, newest first.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_comments(
         &self,
@@ -98,8 +105,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Log work on Jira issue",
         description = "Log work time on a Jira issue. time_spent uses Jira duration syntax: 30m, 2h, 1d 4h.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn jira_add_worklog(
         &self,
@@ -119,8 +132,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Edit Jira comment",
         description = "Edit an existing comment on a Jira issue. Get comment ids from jira_get_comments.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn jira_edit_comment(
         &self,
@@ -135,8 +154,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Get Jira issue worklog",
         description = "List the work logged on a Jira issue: who logged how much time, when, and with what note. Use it to answer time-tracking questions.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_worklog(
         &self,

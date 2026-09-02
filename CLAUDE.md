@@ -52,6 +52,7 @@ optional — tools register only for configured services.
 | `DISABLED_TOOLS` | same syntax, subtracted from what `ENABLED_TOOLS` allows; deny wins (`ENABLED_TOOLS=jira_*` + `DISABLED_TOOLS=*_delete_*`) (D27) |
 | `READ_ONLY` | `true` → only tools annotated `readOnlyHint` are registered; writes are absent from `tools/list` (D22). Named `READ_ONLY`, not `READ_ONLY_MODE` as other servers spell it (D8) |
 | `DRY_RUN` | `true` → write tools stay listed but are validated and described instead of performed (D26). For demos and prompt rehearsal; reads still execute for real |
+| `CONFIRM_DESTRUCTIVE` | `true` → tools annotated `destructiveHint` ask the user through MCP elicitation before running; clients without elicitation are not blocked (D42) |
 | `AUDIT_LOG_FILE` | path to a JSONL audit log; every write call appends one record (D23). Unset = no auditing |
 | `ATTACHMENT_DIR` | the only directory attachment tools may read from and write to; unset = any path, with a startup warning (D37) |
 | `MAX_ATTACHMENT_BYTES` | cap on one attachment either direction; default 50 MB, `0` = no limit (D37) |
@@ -79,14 +80,16 @@ crates/
   atlassian-jira/                # everything Jira
     src/lib.rs                   #   REST v2 client + JiraTools (tool state)
     src/models.rs
-    src/prompts.rs               #   `/jira_issue PROJ-123` as an MCP prompt (D30)
-    src/resources.rs             #   `jira://PROJ-123` as an MCP resource (D24)
+    src/prompts.rs               #   `/jira_issue`, `/jira_triage`, `/jira_standup` (D30)
+    src/resources.rs             #   `jira://PROJ-123`, `jira://PROJ-123/comments`,
+                                 #     `issue_key` completion (D24, D44)
     src/tools/                   #   meta, users, search, issues, transitions,
                                  #     comments, links, fields, agile, attachments
   atlassian-confluence/          # everything Confluence
     src/lib.rs                   #   REST client + ConfluenceTools
     src/models.rs
-    src/resources.rs             #   `confluence://123456` as an MCP resource (D24)
+    src/prompts.rs               #   `/confluence_page 123456` (D30)
+    src/resources.rs             #   `confluence://123456`, `confluence://123456/comments` (D24, D44)
     src/tools/                   #   search, pages, comments, spaces, attachments,
                                  #     versions, admin, storage (projections)
   mcp-atlassian/                 # the server; contains no product knowledge
@@ -97,6 +100,7 @@ crates/
     src/audit.rs                 #   JSONL audit log of write calls (D23)
     src/banner.rs                #   startup banner; stderr only, never stdout (D29)
     src/dry_run.rs               #   DRY_RUN: describe writes, do not run them (D26)
+    src/confirm.rs               #   CONFIRM_DESTRUCTIVE: ask via elicitation first (D42)
     src/router_ext.rs            #   projects product routers onto the server (D21)
 ```
 
@@ -144,8 +148,9 @@ is a plain REST library (D15).
 - Tools return `Json<T>`, never hand-built text — that is what derives the
   `outputSchema` (D20). Lists go through `ListResult<T>`, write operations
   through `StatusResult`; `structuredContent` must be an object, not an array.
-- Every tool must carry `annotations(read_only_hint = ...)`; write tools add
-  `destructive_hint`. "Read-only" means *changes nothing*, not "changes
+- Every tool must carry `title`, `annotations(read_only_hint = ...,
+  open_world_hint = false)`; write tools add `destructive_hint` and
+  `idempotent_hint` (D42). `tests/every_tool.rs` fails otherwise. "Read-only" means *changes nothing*, not "changes
   nothing in Atlassian" — a tool that writes a local file is a write (D31). That annotation is what `READ_ONLY`, the audit log
   and `DRY_RUN` all key off, and an unannotated tool is treated as a write
   (D22). Tests fail if it is missing.
@@ -201,10 +206,11 @@ is a plain REST library (D15).
 
 Filtering lives in `AtlassianServer::new` — routes are pruned from the
 `ToolRouter` before serving (`#[tool_handler(router = self.tool_router)]`),
-so disabled tools never appear in `tools/list`. Two wrappers then compose over
-the survivors, in this order: `DRY_RUN` replaces write handlers with a
-description of the call (`src/dry_run.rs`, D26), and `AUDIT_LOG_FILE` wraps
-that (`src/audit.rs`, D23) so an intercepted call is still logged, marked
-`dry_run: true`. All three read the same `readOnlyHint` source of truth, so a
-tool cannot be read-only for one and a write for another, and an unannotated
-tool is always treated as a write.
+so disabled tools never appear in `tools/list`. Three wrappers then compose
+over the survivors, in this order: `DRY_RUN` replaces write handlers with a
+description of the call (`src/dry_run.rs`, D26), `CONFIRM_DESTRUCTIVE` makes
+destructive handlers ask first (`src/confirm.rs`, D42), and `AUDIT_LOG_FILE`
+wraps that (`src/audit.rs`, D23) so an intercepted or declined call is still
+logged. All of them read the same annotations, so a tool cannot be read-only
+for one and a write for another, and an unannotated tool is always treated
+as a write.

@@ -42,8 +42,9 @@ pub struct UploadAttachmentArgs {
 #[tool_router(router = jira_attachments_router, vis = "pub(crate)")]
 impl JiraTools {
     #[tool(
+        title = "List Jira attachments",
         description = "List attachments of a Jira issue (id, filename, size, mime type).",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_attachments(
         &self,
@@ -58,8 +59,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Download Jira attachment",
         description = "Download a Jira issue attachment to a local file. Writes to the local filesystem and overwrites save_path if it exists. Get attachment ids from jira_get_attachments first.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn jira_download_attachment(
         &self,
@@ -91,8 +98,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Upload Jira attachment",
         description = "Upload a local file as an attachment to a Jira issue.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn jira_upload_attachment(
         &self,

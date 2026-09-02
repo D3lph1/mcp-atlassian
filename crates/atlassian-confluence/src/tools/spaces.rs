@@ -35,8 +35,9 @@ pub struct ConfluenceAddLabelArgs {
 #[tool_router(router = confluence_spaces_router, vis = "pub(crate)")]
 impl ConfluenceTools {
     #[tool(
+        title = "List Confluence spaces",
         description = "List Confluence spaces visible to the authenticated user.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_spaces(
         &self,
@@ -51,8 +52,9 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Get Confluence labels",
         description = "List labels of a Confluence page.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_labels(
         &self,
@@ -67,8 +69,14 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Add Confluence label",
         description = "Add a label to a Confluence page.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn confluence_add_label(
         &self,

@@ -59,8 +59,9 @@ pub struct AssignIssueArgs {
 #[tool_router(router = jira_users_router, vis = "pub(crate)")]
 impl JiraTools {
     #[tool(
+        title = "Get Jira user profile",
         description = "Get one Jira user by identifier (account id on Cloud, username on Server/Data Center). Use jira_search_users first if you only know the person's name.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_user_profile(
         &self,
@@ -75,8 +76,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Search assignable Jira users",
         description = "Find users who can actually be assigned to a project or issue. Prefer this over jira_search_users when picking an assignee — it filters by assignable permission, so it cannot suggest someone Jira would reject.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_search_assignable_users(
         &self,
@@ -96,8 +98,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Assign Jira issue",
         description = "Assign a Jira issue to a user, or unassign it by omitting the assignee. Resolve the identifier with jira_search_assignable_users first.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn jira_assign_issue(
         &self,
@@ -114,8 +122,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "List Jira watchers",
         description = "List the watchers of a Jira issue.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_watchers(
         &self,
@@ -130,8 +139,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Add Jira watcher",
         description = "Add a user as a watcher of a Jira issue.",
-        annotations(read_only_hint = false, destructive_hint = false)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn jira_add_watcher(
         &self,
@@ -145,8 +160,14 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Remove Jira watcher",
         description = "Remove a user from the watchers of a Jira issue.",
-        annotations(read_only_hint = false, destructive_hint = true)
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn jira_remove_watcher(
         &self,

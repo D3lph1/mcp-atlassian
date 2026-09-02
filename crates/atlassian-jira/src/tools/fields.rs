@@ -39,8 +39,9 @@ pub struct GetFieldOptionsArgs {
 #[tool_router(router = jira_fields_router, vis = "pub(crate)")]
 impl JiraTools {
     #[tool(
+        title = "Search Jira fields",
         description = "Find Jira field definitions by name. Call this to resolve a custom field's id (e.g. \"Story Points\" -> customfield_10011) before setting it in jira_create_issue or jira_update_issue, or before using it in JQL.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_search_fields(
         &self,
@@ -55,8 +56,9 @@ impl JiraTools {
     }
 
     #[tool(
+        title = "Get Jira field options",
         description = "List the allowed values of a select-style field (select, multi-select, radio, checkbox, priority, version, component). Pass issue_key when about to edit an issue, or project_key (+ issue_type) when about to create one; without either only Jira Cloud administrators get an answer. Use it to pick a valid option before writing to the field.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn jira_get_field_options(
         &self,

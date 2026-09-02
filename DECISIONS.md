@@ -906,3 +906,59 @@ variable and parsed with `tracing_subscriber::filter::Targets`, which takes
 the same `crate=level` directives as `EnvFilter` without the regex crates
 behind it; and the route filtering in `AtlassianServer::new` is one pass over
 `tools/list` instead of three.
+
+## D42. Every tool carries a title and says whether it is idempotent
+MCP clients render a tool's `title` in the permission prompt they show
+before a call; `jira_transition_issue` reads worse there than "Transition
+Jira issue". `idempotentHint` tells a client whether a retry after a lost
+response is safe; `openWorldHint` whether the tool may reach beyond the
+system it names. All seventy tools now declare all three: a title that names
+the product, `openWorldHint: false` (a closed Atlassian instance), and — for
+writes — an `idempotentHint` that is true only where a repeat with the same
+arguments leaves the same state (assign, watchers, labels, restrictions,
+deletes, moves) and false for the rest (a second `add_comment` is a second
+comment). `tests/every_tool.rs` enumerates `tools/list` and holds all three,
+so a new tool without them fails the suite rather than the client's prompt.
+
+`CONFIRM_DESTRUCTIVE=true` builds on the same annotations: a tool marked
+destructive asks the user through MCP elicitation — one boolean form,
+"perform this destructive operation?", naming the tool and its arguments —
+and runs only on an accepted `confirm: true`. A decline is an error result
+("was not performed"), which the audit log records as such and a model
+reads as not done. The wrapper is the fourth of its kind (project, dry-run,
+audit), re-targeting routes by annotation; it sits after dry run (a call
+that will not happen needs no confirmation) and inside auditing. Opt-in and
+capability-checked: a client that declared no elicitation support gets the
+old behaviour and one warning, because blocking every delete behind a
+question nobody can answer would be worse than asking none.
+
+## D43. Reading storage: the common macros become what they mean
+`htmd` degrades an `<ac:structured-macro>` to its text, which loses the one
+thing a reader needs — what kind of thing it was. Before `htmd` sees the
+document, the macros a page usually has are rewritten to plain HTML it can
+read: `code` to a fenced block with its language (D36), `info`/`note`/
+`warning`/`tip`/`panel` to a blockquote under a bold label, `expand` to its
+body under its title, page and attachment links to links carrying the
+title, images to `![alt](file)`, task lists to ☑/☐ items, `status` and
+`jira` to their text in bold, `toc` to a marker. Nesting is handled by
+rewriting the body first; a self-closing macro has no body. Anything else
+still degrades to text. This is string scanning over a closed vocabulary,
+not an XML parser (HANDOFF-PLAN §12).
+
+## D44. Sub-resources and completions
+`jira://KEY/comments` and `confluence://ID/comments` join the two resource
+templates (D24): the comments are what a client attaches right after the
+issue or page itself, and the URI parsers already knew how to refuse them.
+Anything else after the key is still rejected with the expected shapes.
+
+`completion/complete` answers for `issue_key`, wherever a prompt or a
+resource template takes one: project keys (as `KEY-`) until the first dash,
+then the project's most recently updated issues that match what was typed.
+Other arguments answer with an empty list, which is what the spec says an
+argument with nothing to offer does.
+
+Not done, and not going to be: forwarding the server's log to the client
+through the `logging` capability (HANDOFF-PLAN §6.5). rmcp marks the whole
+capability deprecated — SEP-2577 removes it from the protocol — so a model
+that needs to know about a retry will keep learning it from the tool's
+error text (D13).

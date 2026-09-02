@@ -41,8 +41,9 @@ pub struct DiffArgs {
 #[tool_router(router = confluence_versions_router, vis = "pub(crate)")]
 impl ConfluenceTools {
     #[tool(
+        title = "Get Confluence page history",
         description = "List the version history of a Confluence page: version numbers, authors, timestamps and change messages. Use it before reading or diffing an old version.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_page_history(
         &self,
@@ -57,8 +58,9 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Get Confluence page version",
         description = "Read one historical version of a Confluence page, body converted to Markdown. Get version numbers from confluence_get_page_history.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_page_version(
         &self,
@@ -73,8 +75,9 @@ impl ConfluenceTools {
     }
 
     #[tool(
+        title = "Diff Confluence page versions",
         description = "Compare two versions of a Confluence page and return a unified line diff of their Markdown. Use it to answer what changed between versions.",
-        annotations(read_only_hint = true)
+        annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn confluence_get_page_diff(
         &self,
