@@ -14,7 +14,7 @@
 
 use std::io::{IsTerminal, Write};
 
-use atlassian_client::Config;
+use mcp_atlassian_client::Config;
 
 /// Inner width of the box; the frame adds two columns.
 const WIDTH: usize = 78;
@@ -222,7 +222,7 @@ fn elide(text: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use atlassian_client::{Auth, ServiceConfig};
+    use mcp_atlassian_client::{Auth, ServiceConfig};
     use std::path::PathBuf;
     use std::time::Duration;
 

@@ -5,8 +5,8 @@
 
 use std::collections::HashSet;
 
-use atlassian_client::{Auth, Config, ServiceConfig};
 use mcp_atlassian::server::AtlassianServer;
+use mcp_atlassian_client::{Auth, Config, ServiceConfig};
 
 fn service() -> ServiceConfig {
     ServiceConfig {

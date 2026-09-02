@@ -1,5 +1,5 @@
-use atlassian_client::{Auth, Config, ServiceConfig, ToolFilter};
 use mcp_atlassian::server::AtlassianServer;
+use mcp_atlassian_client::{Auth, Config, ServiceConfig, ToolFilter};
 
 /// Tools not annotated `readOnlyHint`. Includes the two attachment downloads:
 /// they write to the local filesystem, which READ_ONLY must also prevent.

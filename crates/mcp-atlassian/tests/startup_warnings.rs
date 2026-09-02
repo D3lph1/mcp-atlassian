@@ -10,8 +10,8 @@
 
 use std::path::PathBuf;
 
-use atlassian_client::{Auth, Config, ServiceConfig, ToolFilter};
 use mcp_atlassian::server::AtlassianServer;
+use mcp_atlassian_client::{Auth, Config, ServiceConfig, ToolFilter};
 
 fn service() -> ServiceConfig {
     ServiceConfig {

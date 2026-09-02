@@ -3,8 +3,8 @@
 //! The earlier implementation round-tripped the whole page through Markdown,
 //! which turned every macro outside the edited section into plain text.
 
-use atlassian_client::{Auth, Config, ServiceConfig};
 use mcp_atlassian::server::AtlassianServer;
+use mcp_atlassian_client::{Auth, Config, ServiceConfig};
 use rmcp::model::CallToolRequestParams;
 use rmcp::service::RunningService;
 use rmcp::{RoleClient, ServiceExt};

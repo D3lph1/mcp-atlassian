@@ -2,9 +2,9 @@
 //! real socket. Only built with `--features http`.
 #![cfg(feature = "http")]
 
-use atlassian_client::{Auth, Config, ServiceConfig};
 use mcp_atlassian::http::router;
 use mcp_atlassian::server::AtlassianServer;
+use mcp_atlassian_client::{Auth, Config, ServiceConfig};
 use rmcp::transport::streamable_http_server::StreamableHttpServerConfig;
 use serde_json::json;
 use wiremock::MockServer;

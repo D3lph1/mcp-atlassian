@@ -189,13 +189,13 @@ fixtures taken from real Cloud/DC responses. No live instances in CI.
 Each Atlassian product is one crate that owns everything about it — REST
 client, models and MCP tools:
 
-- `crates/atlassian-client` — shared HTTP: auth (token/PAT/OAuth), retries,
+- `crates/mcp-atlassian-client` — shared HTTP: auth (token/PAT/OAuth), retries,
   error mapping, env configuration, plus the shared MCP result types behind an
   `mcp` feature. Depends on reqwest, serde.
-- `crates/atlassian-jira` — the Jira client, its models and (behind `mcp`) its
+- `crates/mcp-atlassian-jira` — the Jira client, its models and (behind `mcp`) its
   tools.
-- `crates/atlassian-confluence` — the same for Confluence.
-- `crates/storage-markdown` — storage XHTML ↔ Markdown (htmd/comrak). No
+- `crates/mcp-atlassian-confluence` — the same for Confluence.
+- `crates/mcp-atlassian-storage-markdown` — storage XHTML ↔ Markdown (htmd/comrak). No
   Atlassian dependencies at all.
 - `crates/mcp-atlassian` (bin) — composes the product routers into one server:
   configuration, route filtering (`ENABLED_TOOLS`, `READ_ONLY`),
@@ -208,8 +208,21 @@ directories. Now a product is one directory, and the server crate contains no
 product knowledge at all.
 
 The `mcp` feature keeps the clients usable as plain REST libraries — without it
-they do not pull in rmcp (verified: `cargo tree -p atlassian-jira` shows no
+they do not pull in rmcp (verified: `cargo tree -p mcp-atlassian-jira` shows no
 rmcp until `--features mcp`).
+
+Every crate carries the `mcp-atlassian-` prefix, and that is a statement about
+support rather than about tidiness. crates.io has one flat namespace, a name is
+taken for good, and publishing is not optional here: a crate with a path
+dependency on an unpublished one is rejected, so shipping the server means
+shipping all five. `atlassian-jira` is exactly the name someone writing a real
+Jira library for Rust would want. Taking it for what is, honestly, the
+internals of one MCP server would close that door and quietly promise an API
+this repository does not intend to keep stable — these crates version as one
+line, `version.workspace = true`, and move whenever the server needs them to.
+The prefix says whose internals they are. The property above stays true; it is
+just no longer advertised as an offer. Directory names match the crate names,
+so `cargo test -p <name>` and `ls crates/` agree.
 
 Upside beyond tidiness: parallel compilation, tests and wiremock fixtures next
 to their client. Dependency versions come from `[workspace.dependencies]`,
@@ -277,7 +290,7 @@ before calling, and can consume it without parsing prose.
 Three consequences shaped the code:
 
 - **Client models derive `JsonSchema`.** `schemars` is a plain dependency of
-  `atlassian-jira`/`atlassian-confluence`, not a feature. It is not an MCP
+  `mcp-atlassian-jira`/`mcp-atlassian-confluence`, not a feature. It is not an MCP
   dependency (D15 still holds — the clients stay protocol-free), and it is
   already in the tree via rmcp.
 - **Lists are wrapped.** `structuredContent` is a JSON *object* per spec, so
@@ -526,7 +539,7 @@ moved. Every such list was really a pattern written out longhand.
 Not a glob library, and not `glob`/`globset` as a dependency: no `?`, no
 `[a-z]`, no `{a,b}`, no escaping. Tool names are a flat set of lowercase
 `product_verb_noun` identifiers; `*` alone covers every slice anyone has
-wanted, and the matcher is 15 lines (`atlassian-client/src/tool_filter.rs`).
+wanted, and the matcher is 15 lines (`mcp-atlassian-client/src/tool_filter.rs`).
 Segments between wildcards are matched greedily left to right, which is exact
 for this grammar — with no backtracking constructs, the leftmost occurrence of
 a segment never rules out a match a later one would have allowed. The suffix
@@ -828,7 +841,7 @@ section silently rewrote every other section without its code blocks, panels,
 page links and images. The tool's description promised "leaving the rest of
 the page untouched".
 
-`storage_markdown::replace_section` now finds `<hN>…</hN>` in the storage
+`mcp_atlassian_storage_markdown::replace_section` now finds `<hN>…</hN>` in the storage
 XHTML, takes the run up to the next heading of level ≤ N, and replaces only
 that slice. The bytes outside it are the bytes Confluence sent. The
 replacement is converted from Markdown on its own, which is the only part
@@ -867,7 +880,7 @@ Downloads stream from the socket to the file one chunk at a time and stop —
 removing the partial file — at the limit; uploads are checked by size before
 they are opened, then streamed with a `Content-Length`. Before this a 200 MB
 attachment was held in memory twice by a server whose target is 30 MB.
-The two helpers live in `atlassian_client::mcp::FileAccess` and are handed to
+The two helpers live in `mcp_atlassian_client::mcp::FileAccess` and are handed to
 each product's tool state; a product cannot write a file without going
 through them.
 
@@ -1063,7 +1076,7 @@ release notes are generated from commits.
 
 **Open, in rough order of value.**
 - Publish to crates.io: the path dependencies already carry versions;
-  publish client → storage-markdown → jira → confluence → server. Then a
+  publish client → mcp-atlassian-storage-markdown → jira → confluence → server. Then a
   Homebrew formula.
 - `--list-tools`, so a user can see the surface without configuring.
 - A `jira_release_notes` prompt (fixVersion → grouped summaries).

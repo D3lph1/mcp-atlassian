@@ -1,0 +1,31 @@
+[package]
+name = "mcp-atlassian-jira"
+description = "Jira REST API v2 client (Cloud and Server/Data Center)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+# MCP tool definitions on top of the REST client. Off by default so the crate
+# stays usable as a plain Atlassian library (D15/D21).
+mcp = ["dep:rmcp", "dep:tokio", "mcp-atlassian-client/mcp"]
+
+[dependencies]
+rmcp = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["fs"] }
+
+mcp-atlassian-client.workspace = true
+schemars.workspace = true
+# Already in the tree via atlassian-client — diagnostics only.
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true

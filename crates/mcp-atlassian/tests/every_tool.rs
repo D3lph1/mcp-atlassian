@@ -14,15 +14,15 @@
 
 use std::collections::BTreeMap;
 
-use atlassian_client::{Auth, Config, ServiceConfig};
 use mcp_atlassian::server::AtlassianServer;
+use mcp_atlassian_client::{Auth, Config, ServiceConfig};
 use rmcp::model::CallToolRequestParams;
 use rmcp::service::RunningService;
 use rmcp::{RoleClient, ServiceExt};
 use serde_json::{json, Map, Value};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-/// Page sizes are capped here (`atlassian_client::mcp::MAX_SEARCH_RESULTS`).
+/// Page sizes are capped here (`mcp_atlassian_client::mcp::MAX_SEARCH_RESULTS`).
 const CAP: u64 = 50;
 /// What a tool is asked for when the test wants to see the cap applied.
 const ABSURD: u64 = 100_000;

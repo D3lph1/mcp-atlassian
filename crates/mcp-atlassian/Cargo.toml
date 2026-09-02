@@ -24,9 +24,9 @@ http = [
 
 [dependencies]
 axum = { workspace = true, optional = true }
-atlassian-client = { workspace = true, features = ["mcp"] }
-atlassian-jira = { workspace = true, features = ["mcp"] }
-atlassian-confluence = { workspace = true, features = ["mcp"] }
+mcp-atlassian-client = { workspace = true, features = ["mcp"] }
+mcp-atlassian-jira = { workspace = true, features = ["mcp"] }
+mcp-atlassian-confluence = { workspace = true, features = ["mcp"] }
 anyhow.workspace = true
 chrono.workspace = true
 serde.workspace = true

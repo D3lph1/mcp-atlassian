@@ -2,8 +2,8 @@
 //! them, `prompts/get` fetches the issue and returns a briefing, and a product
 //! that lost its tools loses its prompts with them.
 
-use atlassian_client::{Auth, Config, ServiceConfig, ToolFilter};
 use mcp_atlassian::server::AtlassianServer;
+use mcp_atlassian_client::{Auth, Config, ServiceConfig, ToolFilter};
 use rmcp::model::GetPromptRequestParams;
 use rmcp::service::RunningService;
 use rmcp::{RoleClient, ServiceExt};

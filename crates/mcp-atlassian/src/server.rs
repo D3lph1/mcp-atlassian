@@ -4,10 +4,10 @@ use crate::audit::{instrument_writes, AuditLog};
 use crate::confirm::confirm_destructive;
 use crate::dry_run::intercept_writes;
 use crate::router_ext::{project_prompt_router, project_router};
-use atlassian_client::mcp::FileAccess;
-use atlassian_client::Config;
-use atlassian_confluence::{ConfluenceClient, ConfluenceTools};
-use atlassian_jira::{JiraClient, JiraTools};
+use mcp_atlassian_client::mcp::FileAccess;
+use mcp_atlassian_client::Config;
+use mcp_atlassian_confluence::{ConfluenceClient, ConfluenceTools};
+use mcp_atlassian_jira::{JiraClient, JiraTools};
 use rmcp::{
     handler::server::router::{prompt::PromptRouter, tool::ToolRouter},
     model::{
@@ -50,7 +50,7 @@ pub struct AtlassianServer {
 }
 
 impl AtlassianServer {
-    pub fn new(config: &Config) -> atlassian_client::Result<Self> {
+    pub fn new(config: &Config) -> mcp_atlassian_client::Result<Self> {
         // Where the attachment tools may touch the filesystem (D37).
         let files = FileAccess::new(
             config.attachment_dir.as_deref(),
@@ -85,11 +85,11 @@ impl AtlassianServer {
         // because a route only runs for a configured service — routes of an
         // unconfigured one are pruned right below.
         let mut tool_router =
-            project_router(atlassian_jira::tools::router(), |s: &Self| {
+            project_router(mcp_atlassian_jira::tools::router(), |s: &Self| {
                 s.jira
                     .as_ref()
                     .expect("jira tools pruned when unconfigured")
-            }) + project_router(atlassian_confluence::tools::router(), |s: &Self| {
+            }) + project_router(mcp_atlassian_confluence::tools::router(), |s: &Self| {
                 s.confluence
                     .as_ref()
                     .expect("confluence tools pruned when unconfigured")
@@ -177,7 +177,7 @@ impl AtlassianServer {
         let tool_router = match &config.audit_log {
             Some(path) => {
                 let log = AuditLog::open(path, config.dry_run).map_err(|e| {
-                    atlassian_client::Error::Config(format!(
+                    mcp_atlassian_client::Error::Config(format!(
                         "failed to open the audit log `{}`: {e}",
                         path.display()
                     ))
@@ -212,13 +212,13 @@ impl AtlassianServer {
         // Pruned by name prefix rather than by emptying the router, so a
         // second product's prompts are not removed along with the first's.
         let mut prompt_router =
-            project_prompt_router(atlassian_jira::prompts::router(), |s: &Self| {
+            project_prompt_router(mcp_atlassian_jira::prompts::router(), |s: &Self| {
                 s.jira
                     .as_ref()
                     .expect("jira prompts pruned when unconfigured")
             });
         prompt_router +=
-            project_prompt_router(atlassian_confluence::prompts::router(), |s: &Self| {
+            project_prompt_router(mcp_atlassian_confluence::prompts::router(), |s: &Self| {
                 s.confluence
                     .as_ref()
                     .expect("confluence prompts pruned when unconfigured")
@@ -253,10 +253,10 @@ impl AtlassianServer {
     pub fn resource_templates(&self) -> Vec<ResourceTemplate> {
         let mut templates = Vec::new();
         if self.jira_available {
-            templates.extend(atlassian_jira::resources::templates());
+            templates.extend(mcp_atlassian_jira::resources::templates());
         }
         if self.confluence_available {
-            templates.extend(atlassian_confluence::resources::templates());
+            templates.extend(mcp_atlassian_confluence::resources::templates());
         }
         templates
     }
@@ -320,7 +320,7 @@ impl ServerHandler for AtlassianServer {
             Reference::Prompt(prompt) => prompt.name.starts_with("jira_"),
             Reference::Resource(template) => template
                 .uri
-                .starts_with(atlassian_jira::resources::URI_PREFIX),
+                .starts_with(mcp_atlassian_jira::resources::URI_PREFIX),
             // `Reference` is `#[non_exhaustive]`.
             _ => false,
         };
@@ -364,14 +364,14 @@ impl ServerHandler for AtlassianServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, McpError> {
         let uri = request.uri.as_str();
-        let contents = if uri.starts_with(atlassian_jira::resources::URI_PREFIX) {
+        let contents = if uri.starts_with(mcp_atlassian_jira::resources::URI_PREFIX) {
             self.jira
                 .as_ref()
                 .filter(|_| self.jira_available)
                 .ok_or_else(|| unavailable("Jira", "JIRA_URL", self.jira.is_some()))?
                 .read_resource(uri)
                 .await?
-        } else if uri.starts_with(atlassian_confluence::resources::URI_PREFIX) {
+        } else if uri.starts_with(mcp_atlassian_confluence::resources::URI_PREFIX) {
             self.confluence
                 .as_ref()
                 .filter(|_| self.confluence_available)

@@ -1,6 +1,6 @@
 use anyhow::Context;
-use atlassian_client::{Config, Transport};
 use mcp_atlassian::server::AtlassianServer;
+use mcp_atlassian_client::{Config, Transport};
 use rmcp::{transport::stdio, ServiceExt};
 use tracing_subscriber::{filter::Targets, prelude::*};
 

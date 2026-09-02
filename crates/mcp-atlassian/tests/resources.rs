@@ -1,8 +1,8 @@
 //! MCP resources: `jira://ISSUE-KEY` and `confluence://PAGE_ID`, end to end
 //! over an in-memory transport.
 
-use atlassian_client::{Auth, Config, ServiceConfig, ToolFilter};
 use mcp_atlassian::server::AtlassianServer;
+use mcp_atlassian_client::{Auth, Config, ServiceConfig, ToolFilter};
 use rmcp::model::{ReadResourceRequestParams, ResourceContents};
 use rmcp::service::RunningService;
 use rmcp::{RoleClient, ServiceExt};
@@ -106,7 +106,10 @@ async fn reading_an_issue_returns_json_with_the_key_case_preserved() {
     Mock::given(method("GET"))
         .and(path("/rest/api/2/issue/PROJ-123"))
         // The field list is explicit, so the response stays small (D4).
-        .and(query_param("fields", atlassian_jira::DEFAULT_ISSUE_FIELDS))
+        .and(query_param(
+            "fields",
+            mcp_atlassian_jira::DEFAULT_ISSUE_FIELDS,
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "10001",
             "key": "PROJ-123",

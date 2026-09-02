@@ -1,8 +1,8 @@
 //! `completion/complete` for `issue_key` (D44): project keys, then the
 //! project's recent issues.
 
-use atlassian_client::{Auth, Config, ServiceConfig};
 use mcp_atlassian::server::AtlassianServer;
+use mcp_atlassian_client::{Auth, Config, ServiceConfig};
 use rmcp::service::RunningService;
 use rmcp::{RoleClient, ServiceExt};
 use serde_json::json;

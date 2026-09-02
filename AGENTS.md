@@ -37,7 +37,7 @@ cargo test                     # unit + wiremock integration tests
 cargo clippy -- -D warnings    # lint, warnings are errors
 cargo fmt                      # format
 cargo run -p mcp-atlassian     # run stdio server (needs env vars, see below)
-cargo test -p atlassian-jira   # test a single crate
+cargo test -p mcp-atlassian-jira   # test a single crate
 mcp-atlassian --version        # the only flags: --version, --help
 ```
 
@@ -86,7 +86,7 @@ optional — tools register only for configured services.
 | `CACHE_TTL` | seconds to cache reference data (projects, issue types, boards, spaces, fields); unset or `0` = no caching (D25) |
 | `NO_BANNER` | `true` → print the structured startup line instead of the banner (D29) |
 | `NO_COLOR` | any value → no ANSI colour in the banner (colour is also off when stderr is not a terminal) |
-| `RUST_LOG` | `tracing` directives, `info` by default (`debug`, `atlassian_client=debug,info`); no regex forms |
+| `RUST_LOG` | `tracing` directives, `info` by default (`debug`, `mcp_atlassian_client=debug,info`); no regex forms |
 | `TRANSPORT` | `stdio` (default) or `streamable-http` (needs `--features http`) |
 | `HOST` / `PORT` / `ALLOWED_HOSTS` | HTTP transport bind address (127.0.0.1:8000) and extra Host-header allowlist (D18) |
 | `MCP_BEARER_TOKEN` (or `_FILE`) | HTTP transport: every `/mcp` request must carry this bearer token; `/healthz` is exempt (D39) |
@@ -94,40 +94,40 @@ optional — tools register only for configured services.
 ## Layout (cargo workspace)
 
 ```
-Cargo.toml                       # workspace root: [workspace.dependencies], [workspace.lints]
+Cargo.toml                        # workspace root: [workspace.dependencies], [workspace.lints]
 crates/
-  atlassian-client/              # shared HTTP: env config, auth, retries, error
-                                 #   mapping, opt-in TTL cache (D25),
-                                 #   ENABLED_TOOLS wildcards (D27); `mcp`
-                                 #   feature adds ListResult / StatusResult
-                                 #   used by both products
-  storage-markdown/              # storage-XHTML <-> Markdown (htmd / comrak),
-                                 #   zero Atlassian deps
-  atlassian-jira/                # everything Jira
-    src/lib.rs                   #   REST v2 client + JiraTools (tool state)
+  mcp-atlassian-client/           # shared HTTP: env config, auth, retries, error
+                                  #   mapping, opt-in TTL cache (D25),
+                                  #   ENABLED_TOOLS wildcards (D27); `mcp`
+                                  #   feature adds ListResult / StatusResult
+                                  #   used by both products
+  mcp-atlassian-storage-markdown/ # storage-XHTML <-> Markdown (htmd / comrak),
+                                  #   zero Atlassian deps
+  mcp-atlassian-jira/             # everything Jira
+    src/lib.rs                    #   REST v2 client + JiraTools (tool state)
     src/models.rs
-    src/prompts.rs               #   `/jira_issue`, `/jira_triage`, `/jira_standup` (D30)
-    src/resources.rs             #   `jira://PROJ-123`, `jira://PROJ-123/comments`,
-                                 #     `issue_key` completion (D24, D44)
-    src/tools/                   #   meta, users, search, issues, transitions,
-                                 #     comments, links, fields, agile, attachments
-  atlassian-confluence/          # everything Confluence
-    src/lib.rs                   #   REST client + ConfluenceTools
+    src/prompts.rs                #   `/jira_issue`, `/jira_triage`, `/jira_standup` (D30)
+    src/resources.rs              #   `jira://PROJ-123`, `jira://PROJ-123/comments`,
+                                  #     `issue_key` completion (D24, D44)
+    src/tools/                    #   meta, users, search, issues, transitions,
+                                  #     comments, links, fields, agile, attachments
+  mcp-atlassian-confluence/       # everything Confluence
+    src/lib.rs                    #   REST client + ConfluenceTools
     src/models.rs
-    src/prompts.rs               #   `/confluence_page 123456` (D30)
-    src/resources.rs             #   `confluence://123456`, `confluence://123456/comments` (D24, D44)
-    src/tools/                   #   search, pages, comments, spaces, attachments,
-                                 #     versions, admin, storage (projections)
-  mcp-atlassian/                 # the server; contains no product knowledge
-    src/main.rs                  #   entry: config, transport dispatch
-    src/http.rs                  #   streamable HTTP: bearer token, /healthz,
-                                 #     graceful stop (`http` feature, D39)
-    src/server.rs                #   composition, route filtering, ServerHandler
-    src/audit.rs                 #   JSONL audit log of write calls (D23)
-    src/banner.rs                #   startup banner; stderr only, never stdout (D29)
-    src/dry_run.rs               #   DRY_RUN: describe writes, do not run them (D26)
-    src/confirm.rs               #   CONFIRM_DESTRUCTIVE: ask via elicitation first (D42)
-    src/router_ext.rs            #   projects product routers onto the server (D21)
+    src/prompts.rs                #   `/confluence_page 123456` (D30)
+    src/resources.rs              #   `confluence://123456`, `confluence://123456/comments` (D24, D44)
+    src/tools/                    #   search, pages, comments, spaces, attachments,
+                                  #     versions, admin, storage (projections)
+  mcp-atlassian/                  # the server; contains no product knowledge
+    src/main.rs                   #   entry: config, transport dispatch
+    src/http.rs                   #   streamable HTTP: bearer token, /healthz,
+                                  #     graceful stop (`http` feature, D39)
+    src/server.rs                 #   composition, route filtering, ServerHandler
+    src/audit.rs                  #   JSONL audit log of write calls (D23)
+    src/banner.rs                 #   startup banner; stderr only, never stdout (D29)
+    src/dry_run.rs                #   DRY_RUN: describe writes, do not run them (D26)
+    src/confirm.rs                #   CONFIRM_DESTRUCTIVE: ask via elicitation first (D42)
+    src/router_ext.rs             #   projects product routers onto the server (D21)
 ```
 
 A product is one crate: its client, models and tools live together, so adding a
@@ -190,7 +190,7 @@ is a plain REST library (D15).
   A link the API returned (attachment `content`, `_links.download`) goes
   through `get_bytes`, which checks origin instead — it legitimately carries
   a query string (D33).
-- Values interpolated into JQL/CQL go through `atlassian_client::query::quote`.
+- Values interpolated into JQL/CQL go through `mcp_atlassian_client::query::quote`.
 - Every environment variable is read in `Config::read` (`config.rs`), which
   takes an `Env`; nothing else calls `std::env::var`. Tests build a `Config`
   with `..Config::default()`.
@@ -206,7 +206,7 @@ is a plain REST library (D15).
   caller named them in `fields` (D35); `get_issue(key, None)` requests
   `DEFAULT_ISSUE_FIELDS`, never everything.
 - Confluence section edits operate on storage XHTML via
-  `storage_markdown::replace_section` (D36); never round-trip a whole page
+  `mcp_atlassian_storage_markdown::replace_section` (D36); never round-trip a whole page
   through Markdown to change part of it.
 - `to_mcp_error` picks the JSON-RPC code: what the caller can fix is
   `invalid_params`, the rest `internal_error`, HTTP status in `data`.
