@@ -212,6 +212,66 @@ jobs:
           files: dist/*
           generate_release_notes: true
 
+  # The Homebrew formula lives in another repository, so this is the one job
+  # that cannot use the workflow's own token: HOMEBREW_TAP_TOKEN is a
+  # fine-grained PAT scoped to d3lph1/homebrew-tap with contents:write.
+  #
+  # The formula is generated from the template in .github/homebrew, which
+  # makes this repository its single source of truth — the copy in the tap
+  # is overwritten on every release. Checksums are computed from the very
+  # artifacts the release job attached, not fetched back from the release,
+  # so the formula cannot describe a different build than the one published.
+  homebrew:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Render the formula
+        run: |
+          set -euo pipefail
+          command -v envsubst >/dev/null || sudo apt-get install -y --no-install-recommends gettext-base
+          VERSION="${GITHUB_REF_NAME#v}"
+          sha() { sha256sum "dist/$1" | cut -d' ' -f1; }
+          export VERSION
+          SHA_MACOS_ARM=$(sha mcp-atlassian-aarch64-apple-darwin)
+          SHA_MACOS_INTEL=$(sha mcp-atlassian-x86_64-apple-darwin)
+          SHA_LINUX_ARM=$(sha mcp-atlassian-aarch64-unknown-linux-musl)
+          SHA_LINUX_INTEL=$(sha mcp-atlassian-x86_64-unknown-linux-musl)
+          export SHA_MACOS_ARM SHA_MACOS_INTEL SHA_LINUX_ARM SHA_LINUX_INTEL
+          # Named substitutions only: the template is Ruby, and a bare
+          # envsubst would eat anything else that looks like a variable.
+          envsubst '${VERSION} ${SHA_MACOS_ARM} ${SHA_MACOS_INTEL} ${SHA_LINUX_ARM} ${SHA_LINUX_INTEL}' \
+            < .github/homebrew/mcp-atlassian.rb > formula.rb
+          ruby -c formula.rb
+          if grep -q '\${' formula.rb; then
+            echo "::error::a placeholder was left unrendered"
+            exit 1
+          fi
+          cat formula.rb
+      - uses: actions/checkout@v7
+        with:
+          repository: d3lph1/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+      - name: Push the formula
+        working-directory: tap
+        run: |
+          set -euo pipefail
+          cp ../formula.rb Formula/mcp-atlassian.rb
+          if git diff --quiet; then
+            echo "the formula already describes ${GITHUB_REF_NAME}"
+            exit 0
+          fi
+          git config user.name d3lph1
+          git config user.email d3lph1.contact@gmail.com
+          git commit -am "mcp-atlassian ${GITHUB_REF_NAME#v}"
+          git push
+
   # crates.io, last and on purpose. A GitHub release can be deleted and a
   # container tag can be overwritten; a published version can only be yanked,
   # which hides it from the resolver and leaves the file downloadable for

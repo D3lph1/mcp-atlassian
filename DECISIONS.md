@@ -1031,10 +1031,20 @@ Homebrew is a tap of its own, `d3lph1/homebrew-tap`, not homebrew-core —
 core wants a project with an audience this one does not have yet. The
 formula downloads the release binary for the platform and installs it;
 nothing is compiled on the user's machine, and the four checksums come from
-the release's own `SHA256SUMS`. It is the one artefact CI does not update:
-a new version means editing the formula in that repository, because pushing
-to another repository would need a personal access token stored here, and
-the formula is four lines of change once a release.
+the release's own `SHA256SUMS`. CI updates it on every tag, which is the
+one job that cannot use the workflow's own token — that token is confined to
+this repository. `HOMEBREW_TAP_TOKEN` is a fine-grained PAT scoped to the tap
+alone with `contents: write`, which is the smallest grant that does the job:
+it cannot touch this repository, publish packages, or read anything else.
+
+The formula is rendered from `.github/homebrew/mcp-atlassian.rb` here, so this
+repository stays its single source of truth and the copy in the tap is
+overwritten each release — editing it there would be undone. Checksums are
+computed from the artifacts the release job attached rather than fetched back
+from the release, so the formula cannot end up describing a different build
+than the one published. The rendered file is syntax-checked and scanned for
+unsubstituted placeholders before it is pushed, and an unchanged formula is
+not committed, so re-running a tag is a no-op.
 
 A tag also publishes the five crates to crates.io, and the job order is the
 point: `release` first, `publish` after it and only if it succeeded. A GitHub
