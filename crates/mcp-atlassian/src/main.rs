@@ -66,6 +66,14 @@ async fn main() -> anyhow::Result<()> {
         );
     }
     log_registered_tools(&tools);
+    if let Some(path) = &config.audit_log {
+        tracing::info!(path = %path.display(), "auditing write operations");
+    }
+    // Last, so a warning is the final thing on the screen rather than the
+    // first — above the banner it reads as a failure to start (D29).
+    for warning in server.startup_warnings() {
+        tracing::warn!("{warning}");
+    }
 
     match &config.transport {
         Transport::Stdio => {

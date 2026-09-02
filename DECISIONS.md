@@ -611,6 +611,17 @@ the log because this function has not heard of it. The point is that a narrowed
 `ENABLED_TOOLS` / `DISABLED_TOOLS` / `READ_ONLY` can be verified against the
 log instead of by calling `tools/list` through a client.
 
+Nothing about the configuration is logged before the summary, and that costs
+a small piece of structure. `AtlassianServer::new` is where the unset
+`ATTACHMENT_DIR` (D37) and the opened audit log (D23) become known, but it
+runs before the banner can be printed — the banner needs the tool count, which
+only exists once filtering is done. Logging from the constructor put a `WARN`
+above the frame, where it reads as a failure to start rather than as a note
+about a running server. So the constructor collects its warnings into
+`startup_warnings` and `main` emits them after the summary and the tool list,
+with the audit line alongside them. Warnings last, deliberately: the final
+line of a long startup is the one an operator actually reads.
+
 No dependency. `std::io::IsTerminal` covers TTY detection, and the escape codes
 are six string constants — `owo-colors`, `colored` and the rest would pull a
 crate in for `format!`.

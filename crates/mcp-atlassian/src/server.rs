@@ -42,6 +42,11 @@ pub struct AtlassianServer {
     /// `/jira_issue` can be a way around an allowlist that removed Jira.
     jira_available: bool,
     confluence_available: bool,
+    /// What the operator should know about this configuration, collected
+    /// rather than logged: construction happens before the startup summary
+    /// is printed, and a warning above the banner reads like a crash (D29).
+    /// `main` emits these once the summary is out.
+    startup_warnings: Vec<String>,
 }
 
 impl AtlassianServer {
@@ -177,7 +182,6 @@ impl AtlassianServer {
                         path.display()
                     ))
                 })?;
-                tracing::info!(path = %path.display(), "auditing write operations");
                 instrument_writes(tool_router, log)
             }
             None => tool_router,
@@ -189,12 +193,14 @@ impl AtlassianServer {
             .into_iter()
             .map(|t| t.name.to_string())
             .collect();
+        let mut startup_warnings = Vec::new();
         if !files.is_restricted() && registered.iter().any(|n| n.contains("_attachment")) {
             // Said once, at startup, where an operator reads: the model can
             // name any path the process can reach.
-            tracing::warn!(
+            startup_warnings.push(
                 "ATTACHMENT_DIR is not set: the attachment tools may read from and write to any \
                  path this process can reach"
+                    .to_string(),
             );
         }
         let jira_available = jira.is_some() && registered.iter().any(|n| n.starts_with("jira_"));
@@ -232,7 +238,15 @@ impl AtlassianServer {
             prompt_router,
             jira_available,
             confluence_available,
+            startup_warnings,
         })
+    }
+
+    /// What `new` found worth telling the operator, in the order it was
+    /// found. Printed by `main` after the startup summary, never during
+    /// construction — see the field's comment.
+    pub fn startup_warnings(&self) -> &[String] {
+        &self.startup_warnings
     }
 
     /// The resource templates this server advertises, in a stable order.
