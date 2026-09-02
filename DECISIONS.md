@@ -124,6 +124,34 @@ Docker: `FROM scratch` plus the binary; TLS roots are compiled in via
 rustls/webpki-roots, so no CA bundle is needed. Release profile: `lto = true`,
 `codegen-units = 1`, `strip = true`, `panic = "abort"`, `opt-level = "z"`.
 
+`lto = true` is *fat* LTO, and the choice is worth a number. Measured on
+aarch64-apple-darwin, full rebuild after `cargo clean --release`:
+
+| `lto` | binary | vs fat | build |
+|---|---|---|---|
+| `true` (fat) | 3 965 952 | — | 61 s |
+| `"thin"` | 5 280 128 | +33.1% | 44 s |
+| `false` | 5 461 344 | +37.7% | 37 s |
+
+The usual advice — thin buys most of the win for a fraction of the time —
+does not hold here: thin is only 3.3% smaller than no LTO at all, and the
+whole 1.31 MB comes from thin → fat. The shape of the project explains it.
+Five crates layered thinly over each other (tool → product client → shared
+HTTP client) produce call chains that collapse only under cross-crate
+inlining, which is exactly what thin does not do, and `opt-level = "z"`
+suppresses inlining on its own — fat LTO restores the part of it that deletes
+dead code.
+
+So 24 seconds of build time buys 1.5 MB in a `FROM scratch` image whose whole
+point is being an order of magnitude smaller than the interpreted
+alternatives. Numbers are for this host, not the musl target the image uses;
+the ratio should hold, the absolutes will not.
+
+The other knobs trade diagnostics for size, and that is a trade rather than a
+free win: `strip = true` costs symbol names in a backtrace, `panic = "abort"`
+costs unwinding and `catch_unwind`. If a rare production panic ever needs
+diagnosing, `strip = false` buys the names back for about 1 MB.
+
 ## D13. Errors: anyhow internally, typed mapping outward
 HTTP 401/403/404/429 map to MCP errors with actionable text ("check
 JIRA_API_TOKEN", "issue PROJ-1 not found"). 429 respects `Retry-After` and is
