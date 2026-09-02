@@ -562,3 +562,43 @@ log instead of by calling `tools/list` through a client.
 No dependency. `std::io::IsTerminal` covers TTY detection, and the escape codes
 are six string constants — `owo-colors`, `colored` and the rest would pull a
 crate in for `format!`.
+
+## D30. Prompts: they fetch their data
+`prompts/list` and `prompts/get` are served, starting with `jira_issue`, which
+takes an issue key and returns a briefing: the issue's fields, its newest
+comments, then the ask ("state what is being asked, name what is blocking,
+propose the next step"). In most clients a prompt is a slash command, so this
+is typed `/jira_issue PROJ-123`.
+
+The prompt performs the reads itself rather than telling the model to. A
+prompt whose body is "call `jira_get_issue` on PROJ-123" saves the user
+nothing they could not have typed, and costs a round trip before the model has
+seen a single fact. Fetching makes the prompt worth invoking — which is the
+whole difference between a template and a feature.
+
+Two consequences, both handled:
+
+- **Budgets.** A description or a comment thread can be arbitrarily long, so
+  the briefing takes the 5 newest comments and truncates the description at
+  4000 characters and each comment at 800, *saying* that it did. A silently
+  clipped description reads as a complete one, and the model would plan
+  against half a ticket. `jira_get_issue` remains available for the full text.
+- **Failure.** A missing issue is an error naming the key (D13). A missing
+  *comment* endpoint is not: the briefing that already succeeded is worth more
+  than the comments it lacks, so that failure is logged at DEBUG and the
+  briefing says "No comments."
+
+The briefing ends with "do not create, update or transition anything unless
+asked to". A prompt that pulls a ticket into context should not read as
+licence to change it.
+
+Prompts live in the product crate next to the client they call, and are
+projected onto the server by `project_prompt_router` — `#[prompt_router]`
+generates inherent methods for the same reason `#[tool_router]` does (D21), so
+the same adapter shape applies.
+
+They follow the tool surface: a product qualifies for prompts *and* resources
+when it is configured and at least one of its tools survived filtering. So
+`/jira_issue` cannot be a way around an `ENABLED_TOOLS` that removed Jira —
+the same rule D24 already applies to `jira://`, which is why the flag is named
+for the product rather than for either surface.

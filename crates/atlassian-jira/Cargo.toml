@@ -18,6 +18,8 @@ tokio = { workspace = true, optional = true, features = ["fs"] }
 
 atlassian-client.workspace = true
 schemars.workspace = true
+# Already in the tree via atlassian-client — diagnostics only.
+tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

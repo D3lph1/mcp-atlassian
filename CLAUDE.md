@@ -72,6 +72,7 @@ crates/
   atlassian-jira/                # everything Jira
     src/lib.rs                   #   REST v2 client + JiraTools (tool state)
     src/models.rs
+    src/prompts.rs               #   `/jira_issue PROJ-123` as an MCP prompt (D30)
     src/resources.rs             #   `jira://PROJ-123` as an MCP resource (D24)
     src/tools/                   #   meta, users, search, issues, transitions,
                                  #     comments, links, fields, agile, attachments
@@ -111,6 +112,12 @@ Resources work the same way: a product exposes `resources::{URI_PREFIX,
 templates}` plus `read_resource(uri)` on its tool state, and `server.rs`
 dispatches on the URI prefix (D24). `resources/list` is empty by design —
 issues and pages are unbounded; the templates carry the URI shapes.
+
+Prompts too: a product exposes `prompts::router()` over its own state, and
+`project_prompt_router` re-targets it (D30). Prompts fetch their own data — a
+prompt that only tells the model which tool to call is not worth invoking.
+Both surfaces are gated on the product still having tools after filtering, so
+neither is a way around `ENABLED_TOOLS`.
 
 The `mcp` feature is what pulls rmcp into a product crate; without it the crate
 is a plain REST library (D15).

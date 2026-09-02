@@ -2,17 +2,18 @@ use std::sync::Arc;
 
 use crate::audit::{instrument_writes, AuditLog};
 use crate::dry_run::intercept_writes;
-use crate::router_ext::project_router;
+use crate::router_ext::{project_prompt_router, project_router};
 use atlassian_client::Config;
 use atlassian_confluence::{ConfluenceClient, ConfluenceTools};
 use atlassian_jira::{JiraClient, JiraTools};
 use rmcp::{
-    handler::server::router::tool::ToolRouter,
+    handler::server::router::{prompt::PromptRouter, tool::ToolRouter},
     model::{
         Implementation, ListResourceTemplatesResult, ListResourcesResult, PaginatedRequestParams,
         ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, ResourceTemplate,
         ServerCapabilities, ServerInfo,
     },
+    prompt_handler,
     service::RequestContext,
     tool_handler, ErrorData as McpError, RoleServer, ServerHandler,
 };
@@ -30,11 +31,14 @@ pub struct AtlassianServer {
     /// Filtered per configuration: unconfigured services, read-only mode and
     /// the ENABLED_TOOLS allowlist all prune routes at startup.
     tool_router: ToolRouter<Self>,
-    /// Products serving resources: a product qualifies when its service is
-    /// configured *and* at least one of its tools survived filtering, so
-    /// `jira://` cannot be a way around an allowlist that removed Jira (D24).
-    jira_resources: bool,
-    confluence_resources: bool,
+    /// Prompts of the products that survived that filtering (D30).
+    prompt_router: PromptRouter<Self>,
+    /// Products whose non-tool surface — resources (D24) and prompts (D30) —
+    /// is served. A product qualifies when its service is configured *and* at
+    /// least one of its tools survived filtering, so neither `jira://` nor
+    /// `/jira_issue` can be a way around an allowlist that removed Jira.
+    jira_available: bool,
+    confluence_available: bool,
 }
 
 impl AtlassianServer {
@@ -166,32 +170,45 @@ impl AtlassianServer {
             None => tool_router,
         };
 
-        // Resources follow the tool surface, and are decided after filtering.
+        // Resources and prompts follow the tool surface, decided after filtering.
         let registered: Vec<String> = tool_router
             .list_all()
             .into_iter()
             .map(|t| t.name.to_string())
             .collect();
-        let jira_resources = jira.is_some() && registered.iter().any(|n| n.starts_with("jira_"));
-        let confluence_resources =
+        let jira_available = jira.is_some() && registered.iter().any(|n| n.starts_with("jira_"));
+        let confluence_available =
             confluence.is_some() && registered.iter().any(|n| n.starts_with("confluence_"));
+
+        // Prompts drive the tools, so they follow the same qualification as
+        // resources: a product whose tools are all gone has nothing to offer.
+        let mut prompt_router =
+            project_prompt_router(atlassian_jira::prompts::router(), |s: &Self| {
+                s.jira
+                    .as_ref()
+                    .expect("jira prompts pruned when unconfigured")
+            });
+        if !jira_available {
+            prompt_router = PromptRouter::new();
+        }
 
         Ok(Self {
             jira,
             confluence,
             tool_router,
-            jira_resources,
-            confluence_resources,
+            prompt_router,
+            jira_available,
+            confluence_available,
         })
     }
 
     /// The resource templates this server advertises, in a stable order.
     pub fn resource_templates(&self) -> Vec<ResourceTemplate> {
         let mut templates = Vec::new();
-        if self.jira_resources {
+        if self.jira_available {
             templates.extend(atlassian_jira::resources::templates());
         }
-        if self.confluence_resources {
+        if self.confluence_available {
             templates.extend(atlassian_confluence::resources::templates());
         }
         templates
@@ -200,6 +217,11 @@ impl AtlassianServer {
     /// The tools actually registered after filtering, with their schemas.
     pub fn tools(&self) -> Vec<rmcp::model::Tool> {
         self.tool_router.list_all()
+    }
+
+    /// The prompts actually registered after filtering.
+    pub fn prompts(&self) -> Vec<rmcp::model::Prompt> {
+        self.prompt_router.list_all()
     }
 
     /// Names of the tools actually registered after filtering.
@@ -216,12 +238,14 @@ impl AtlassianServer {
 }
 
 #[tool_handler(router = self.tool_router)]
+#[prompt_handler(router = self.prompt_router)]
 impl ServerHandler for AtlassianServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(
             ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
+                .enable_prompts()
                 .build(),
         )
         .with_server_info(Implementation::new(
@@ -268,14 +292,14 @@ impl ServerHandler for AtlassianServer {
         let contents = if uri.starts_with(atlassian_jira::resources::URI_PREFIX) {
             self.jira
                 .as_ref()
-                .filter(|_| self.jira_resources)
+                .filter(|_| self.jira_available)
                 .ok_or_else(|| unavailable("Jira", "JIRA_URL", self.jira.is_some()))?
                 .read_resource(uri)
                 .await?
         } else if uri.starts_with(atlassian_confluence::resources::URI_PREFIX) {
             self.confluence
                 .as_ref()
-                .filter(|_| self.confluence_resources)
+                .filter(|_| self.confluence_available)
                 .ok_or_else(|| {
                     unavailable("Confluence", "CONFLUENCE_URL", self.confluence.is_some())
                 })?

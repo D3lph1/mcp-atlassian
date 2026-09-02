@@ -30,9 +30,11 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
   `structuredContent` (D20)
 - Resources: `jira://PROJ-123` (JSON) and `confluence://123456` (Markdown) as
   resource templates; `resources/list` intentionally empty (D24)
+- Prompts: `/jira_issue PROJ-123` briefs on a ticket — fetches the issue and
+  its newest comments, then asks for a plan (D30)
 - TTL cache: `CACHE_TTL` seconds, reference data only (projects, issue types,
   boards, link types, fields, spaces), off by default (D25)
-- Tests: 151 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
+- Tests: 161 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
   docker); scratch Dockerfile
 - Binary: 3.6 MB stdio / 3.9 MB with http; idle RSS ~2 MB (target < 30 MB —
   comfortably under). The audit log added ~16 KB (chrono was already in the
@@ -58,8 +60,9 @@ Known loose ends:
       templates (D24). Possible follow-ups: sub-resources
       (`jira://PROJ-1/comments`), and `resources/list` seeded from recently
       updated items if a client turns out to need a non-empty list.
-- [ ] **Prompts** — ready-made: sprint standup, bug triage, release notes from
-      JQL. A differentiator against other implementations.
+- [x] **Prompts** — `jira_issue` (brief on a ticket) landed, D30. Still to
+      write, same shape: sprint standup, bug triage, release notes from JQL,
+      and a Confluence one once `confluence::prompts` exists.
 - [ ] **Elicitation** — confirmation for destructive tools through the client.
       `destructiveHint` is already set on all 14 of them (D22), so this is now
       just wiring the elicitation round-trip.
@@ -116,7 +119,7 @@ on writes — a `create_project` through this server still waits out the TTL.
 
 ## Key files
 
-- `DECISIONS.md` — 29 architecture decisions (D1–D29); read before structural
+- `DECISIONS.md` — 30 architecture decisions (D1–D30); read before structural
   changes
 - `CLAUDE.md` — commands, layout, conventions, env vars, roadmap
 - `crates/atlassian-{jira,confluence}/src/tools/` — tools, next to the

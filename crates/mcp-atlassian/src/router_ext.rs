@@ -9,6 +9,8 @@
 //! its client) and builds a `ToolRouter` over it; this adapter re-targets those
 //! routes onto the composite server, so a product stays in one crate.
 
+use rmcp::handler::server::prompt::PromptContext;
+use rmcp::handler::server::router::prompt::{PromptRoute, PromptRouter};
 use rmcp::handler::server::router::tool::{ToolRoute, ToolRouter};
 use rmcp::handler::server::tool::ToolCallContext;
 use rmcp::model::CallToolRequestParams;
@@ -45,6 +47,35 @@ where
                     context.request_context.clone(),
                 );
                 inner_call(inner_context)
+            },
+        ));
+    }
+    projected
+}
+
+/// The same projection for prompt routes (D30). Prompts are declared on the
+/// product's state for the same reason tools are — `#[prompt_router]` also
+/// generates inherent methods.
+pub fn project_prompt_router<S, T, F>(router: PromptRouter<T>, project: F) -> PromptRouter<S>
+where
+    F: Fn(&S) -> &T + Copy + Send + Sync + 'static,
+    S: Send + Sync + 'static,
+    T: Send + Sync + 'static,
+{
+    let mut projected = PromptRouter::new();
+    for (_, route) in router.map {
+        let inner_get = route.get.clone();
+        projected.add_route(PromptRoute::new_dyn(
+            route.attr,
+            move |context: PromptContext<'_, S>| {
+                let inner_get = inner_get.clone();
+                let inner_context = PromptContext::new(
+                    project(context.server),
+                    context.name.clone(),
+                    context.arguments.clone(),
+                    context.context.clone(),
+                );
+                inner_get(inner_context)
             },
         ));
     }
