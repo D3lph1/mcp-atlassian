@@ -83,11 +83,11 @@ fn brief(issue: &Issue, comments: &[Comment]) -> String {
 
     out.push_str(&format!(
         "Type: {}\nStatus: {}\nPriority: {}\nAssignee: {}\nReporter: {}\n",
-        named(fields.issuetype.as_ref().map(|t| t.name.as_str())),
-        named(fields.status.as_ref().map(|s| s.name.as_str())),
-        named(fields.priority.as_ref().map(|p| p.name.as_str())),
-        named(fields.assignee.as_ref().map(|u| u.display_name.as_str())),
-        named(fields.reporter.as_ref().map(|u| u.display_name.as_str())),
+        unset(fields.issuetype.as_ref().map(|t| t.name.as_str())),
+        unset(fields.status.as_ref().map(|s| s.name.as_str())),
+        unset(fields.priority.as_ref().map(|p| p.name.as_str())),
+        nobody(fields.assignee.as_ref().map(|u| u.display_name.as_str())),
+        nobody(fields.reporter.as_ref().map(|u| u.display_name.as_str())),
     ));
     if !fields.labels.is_empty() {
         out.push_str(&format!("Labels: {}\n", fields.labels.join(", ")));
@@ -135,7 +135,15 @@ fn brief(issue: &Issue, comments: &[Comment]) -> String {
     out
 }
 
-fn named(value: Option<&str>) -> &str {
+/// Absent value of a field that is not a person. One word for both was a
+/// mistake visible on the first real ticket: "Priority: unassigned" reads as
+/// a person's, and a priority is not assigned to anyone — it is simply unset.
+fn unset(value: Option<&str>) -> &str {
+    value.unwrap_or("none")
+}
+
+/// Absent person.
+fn nobody(value: Option<&str>) -> &str {
     value.unwrap_or("unassigned")
 }
 
@@ -233,11 +241,14 @@ mod tests {
         let mut issue = issue();
         issue.fields.description = None;
         issue.fields.assignee = None;
+        issue.fields.priority = None;
         issue.fields.labels.clear();
         let brief = brief(&issue, &[]);
         assert!(brief.contains("(empty)"), "{brief}");
         assert!(brief.contains("No comments."), "{brief}");
         assert!(brief.contains("Assignee: unassigned"), "{brief}");
+        // Not "unassigned": nobody assigns a priority to anyone.
+        assert!(brief.contains("Priority: none"), "{brief}");
     }
 
     #[test]
