@@ -23,7 +23,8 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
   timestamp, tool, arguments, outcome, duration, `destructive` and `dry_run`
   flags (D23)
 - Startup banner on stderr (never stdout — that is the protocol), colour only
-  for a TTY; `NO_BANNER` falls back to the structured line (D29)
+  for a TTY; `NO_BANNER` falls back to the structured line; the registered
+  tools are then logged per product (D29)
 - Markdown ↔ Confluence storage (htmd/comrak, D10)
 - Structured output: every tool advertises an `outputSchema` and returns
   `structuredContent` (D20)
@@ -31,7 +32,7 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
   resource templates; `resources/list` intentionally empty (D24)
 - TTL cache: `CACHE_TTL` seconds, reference data only (projects, issue types,
   boards, link types, fields, spaces), off by default (D25)
-- Tests: 148 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
+- Tests: 151 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
   docker); scratch Dockerfile
 - Binary: 3.6 MB stdio / 3.9 MB with http; idle RSS ~2 MB (target < 30 MB —
   comfortably under). The audit log added ~16 KB (chrono was already in the

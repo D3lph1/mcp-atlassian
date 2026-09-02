@@ -546,6 +546,19 @@ visible width, so colour codes cannot shift the frame; tests assert every line
 of the box is exactly 80 columns with colour on and off, including an
 over-long audit path (elided from the left, keeping the file name).
 
+After the summary — in either form — the registered tools are logged, one
+record per product: `jira tools registered count=17 tools=jira_get_issue, ...`.
+This is log content rather than presentation, so it is emitted the same way
+whether the banner or the structured line was chosen.
+
+Per product, not per tool: 70 records would bury the rest of the startup
+output, and the question being asked is almost always "is this one there",
+which `grep` answers either way. A name whose prefix is not a known product is
+grouped under `other` rather than dropped, so a future crate cannot vanish from
+the log because this function has not heard of it. The point is that a narrowed
+`ENABLED_TOOLS` / `DISABLED_TOOLS` / `READ_ONLY` can be verified against the
+log instead of by calling `tools/list` through a client.
+
 No dependency. `std::io::IsTerminal` covers TTY detection, and the escape codes
 are six string constants — `owo-colors`, `colored` and the rest would pull a
 crate in for `format!`.

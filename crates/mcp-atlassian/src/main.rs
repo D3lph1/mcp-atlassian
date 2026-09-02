@@ -16,11 +16,12 @@ async fn main() -> anyhow::Result<()> {
     let server = AtlassianServer::new(&config).context("failed to initialize clients")?;
 
     let transport = std::env::var("TRANSPORT").unwrap_or_else(|_| "stdio".into());
+    let tools = server.tool_names();
     // One startup summary, in whichever form suits the reader: the banner for a
     // human watching a terminal or `docker logs`, the structured line for a log
     // collector. Both go to stderr — stdout is the protocol (D29).
     if banner_wanted() {
-        mcp_atlassian::banner::print(&config, &transport, server.tool_names().len());
+        mcp_atlassian::banner::print(&config, &transport, tools.len());
     } else {
         tracing::info!(
             transport = %transport,
@@ -28,10 +29,11 @@ async fn main() -> anyhow::Result<()> {
             confluence = config.confluence.is_some(),
             read_only = config.read_only,
             dry_run = config.dry_run,
-            tools = server.tool_names().len(),
+            tools = tools.len(),
             "starting mcp-atlassian"
         );
     }
+    log_registered_tools(&tools);
 
     match transport.as_str() {
         "stdio" => {
@@ -50,6 +52,43 @@ async fn main() -> anyhow::Result<()> {
         other => anyhow::bail!("unknown TRANSPORT `{other}`: use `stdio` or `streamable-http`"),
     }
     Ok(())
+}
+
+/// Names what survived filtering, so a narrowed `ENABLED_TOOLS` /
+/// `DISABLED_TOOLS` / `READ_ONLY` can be checked against the log instead of by
+/// calling `tools/list` through a client (D29).
+///
+/// One record per product rather than per tool: 70 lines would bury the rest of
+/// the startup output, and the interesting question is almost always "is this
+/// one there", which `grep` answers either way.
+fn log_registered_tools(tools: &[String]) {
+    for (product, names) in group_by_product(tools) {
+        tracing::info!(
+            count = names.len(),
+            tools = %names.join(", "),
+            "{product} tools registered"
+        );
+    }
+}
+
+/// Groups tool names by their product prefix, in a stable order. A name with no
+/// known prefix lands in `other` rather than vanishing from the log.
+fn group_by_product(tools: &[String]) -> Vec<(&'static str, Vec<&str>)> {
+    let mut groups: Vec<(&'static str, Vec<&str>)> = vec![
+        ("jira", Vec::new()),
+        ("confluence", Vec::new()),
+        ("other", Vec::new()),
+    ];
+    for name in tools {
+        let group = match name.split_once('_').map(|(prefix, _)| prefix) {
+            Some("jira") => 0,
+            Some("confluence") => 1,
+            _ => 2,
+        };
+        groups[group].1.push(name);
+    }
+    groups.retain(|(_, names)| !names.is_empty());
+    groups
 }
 
 /// `NO_BANNER=true` swaps the banner for the structured startup line.
@@ -115,5 +154,50 @@ mod http {
         tracing::info!("listening on http://{host}:{port}/mcp");
         axum::serve(listener, router).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::group_by_product;
+
+    fn names(raw: &[&str]) -> Vec<String> {
+        raw.iter().map(|n| n.to_string()).collect()
+    }
+
+    #[test]
+    fn tools_are_grouped_by_product_in_a_stable_order() {
+        let tools = names(&["confluence_search", "jira_search", "jira_get_issue"]);
+        assert_eq!(
+            group_by_product(&tools),
+            vec![
+                ("jira", vec!["jira_search", "jira_get_issue"]),
+                ("confluence", vec!["confluence_search"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_empty_product_is_not_reported() {
+        let tools = names(&["jira_search"]);
+        assert_eq!(
+            group_by_product(&tools),
+            vec![("jira", vec!["jira_search"])]
+        );
+        assert!(group_by_product(&[]).is_empty());
+    }
+
+    #[test]
+    fn a_tool_without_a_known_prefix_is_still_listed() {
+        // A future product must not disappear from the log because this
+        // function has not heard of it yet.
+        let tools = names(&["bitbucket_get_pr", "jira_search"]);
+        assert_eq!(
+            group_by_product(&tools),
+            vec![
+                ("jira", vec!["jira_search"]),
+                ("other", vec!["bitbucket_get_pr"]),
+            ]
+        );
     }
 }
