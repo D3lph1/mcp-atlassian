@@ -48,6 +48,10 @@ fn looks_like_a_write(name: &str) -> bool {
         "_transition_",
         "_reply_",
         "_link_to_",
+        // Writes to the local filesystem, not to Atlassian — but READ_ONLY,
+        // the audit log and DRY_RUN all key off the same annotation, and a
+        // tool that overwrites a local path is a write to every one of them.
+        "_download_",
     ];
     // `_get_transitions` and `_search_assignable_users` read; match on the
     // verb position rather than a bare substring.

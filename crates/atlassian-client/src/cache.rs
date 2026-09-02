@@ -104,6 +104,23 @@ impl TtlCache {
     }
 }
 
+/// Runs `fetch` through `cache` when a client has one, unchanged otherwise.
+///
+/// Every product client holds `Option<Arc<TtlCache>>` and needs exactly this
+/// two-line decision; it lived twice, verbatim, before a third product was
+/// even on the backlog.
+pub async fn cached<T, F, Fut>(cache: Option<&TtlCache>, key: &str, fetch: F) -> Result<T>
+where
+    T: Clone + Send + Sync + 'static,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    match cache {
+        Some(cache) => cache.get_or_fetch(key, fetch).await,
+        None => fetch().await,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

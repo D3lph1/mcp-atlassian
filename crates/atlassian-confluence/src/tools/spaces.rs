@@ -8,7 +8,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use atlassian_client::mcp::to_mcp_error;
+use atlassian_client::mcp::{page_size, to_mcp_error};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceGetSpacesArgs {
@@ -42,7 +42,7 @@ impl ConfluenceTools {
     ) -> Result<Json<ResultsPage<Space>>, McpError> {
         let spaces = self
             .client()
-            .get_spaces(args.limit.unwrap_or(25))
+            .get_spaces(page_size(args.limit, 25))
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(spaces))

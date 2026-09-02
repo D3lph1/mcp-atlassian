@@ -10,7 +10,9 @@ use rmcp::{
 use serde::Deserialize;
 
 use super::storage::{page_to_markdown_view, to_storage, PageNode, PageView};
-use atlassian_client::mcp::{list_result, status_result, to_mcp_error, ListResult, StatusResult};
+use atlassian_client::mcp::{
+    list_result, page_size, status_result, to_mcp_error, ListResult, StatusResult,
+};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceGetPageArgs {
@@ -71,7 +73,7 @@ pub struct MovePageArgs {
 pub struct SpacePageTreeArgs {
     /// Space key, e.g. `DEV`.
     pub space_key: String,
-    /// Max pages to walk (default 100).
+    /// Max pages to walk (default 50, cap 50).
     pub limit: Option<u32>,
 }
 
@@ -115,7 +117,7 @@ impl ConfluenceTools {
     ) -> Result<Json<ResultsPage<Content>>, McpError> {
         let children = self
             .client()
-            .get_page_children(&args.page_id, args.limit.unwrap_or(25))
+            .get_page_children(&args.page_id, page_size(args.limit, 25))
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(children))
@@ -215,7 +217,7 @@ impl ConfluenceTools {
     ) -> Result<Json<ListResult<PageNode>>, McpError> {
         let pages = self
             .client()
-            .get_space_pages(&args.space_key, args.limit.unwrap_or(100))
+            .get_space_pages(&args.space_key, page_size(args.limit, 50))
             .await
             .map_err(to_mcp_error)?;
         list_result(build_page_tree(&pages.results))

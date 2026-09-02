@@ -11,7 +11,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use atlassian_client::mcp::{list_result, to_mcp_error, ListResult, MAX_SEARCH_RESULTS};
+use atlassian_client::mcp::{list_result, page_size, to_mcp_error, ListResult};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchFieldsArgs {
@@ -56,10 +56,7 @@ impl JiraTools {
     ) -> Result<Json<ListResult<FieldOption>>, McpError> {
         let options = self
             .client()
-            .get_field_options(
-                &args.field_id,
-                args.max_results.unwrap_or(50).min(MAX_SEARCH_RESULTS),
-            )
+            .get_field_options(&args.field_id, page_size(args.max_results, 50))
             .await
             .map_err(to_mcp_error)?;
         list_result(options)

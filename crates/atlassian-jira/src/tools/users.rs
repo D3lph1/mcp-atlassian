@@ -11,7 +11,7 @@ use rmcp::{
 use serde::Deserialize;
 
 use atlassian_client::mcp::{
-    list_result, status_result, to_mcp_error, ListResult, StatusResult, MAX_SEARCH_RESULTS,
+    list_result, page_size, status_result, to_mcp_error, ListResult, StatusResult,
 };
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -88,7 +88,7 @@ impl JiraTools {
                 &args.query,
                 args.project_key.as_deref(),
                 args.issue_key.as_deref(),
-                args.max_results.unwrap_or(10).min(MAX_SEARCH_RESULTS),
+                page_size(args.max_results, 10),
             )
             .await
             .map_err(to_mcp_error)?;

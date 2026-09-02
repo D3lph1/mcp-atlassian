@@ -8,7 +8,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use atlassian_client::mcp::{list_result, to_mcp_error, ListResult};
+use atlassian_client::mcp::{list_result, page_size, to_mcp_error, ListResult};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddCommentArgs {
@@ -81,7 +81,7 @@ impl JiraTools {
     ) -> Result<Json<CommentPage>, McpError> {
         let comments = self
             .client()
-            .get_comments(&args.issue_key, args.max_results.unwrap_or(10))
+            .get_comments(&args.issue_key, page_size(args.max_results, 10))
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(comments))

@@ -1,8 +1,9 @@
 use atlassian_client::{Auth, Config, ServiceConfig, ToolFilter};
 use mcp_atlassian::server::AtlassianServer;
 
-/// Kept in sync with WRITE_TOOLS in server.rs.
-const WRITE_TOOL_COUNT: usize = 30;
+/// Tools not annotated `readOnlyHint`. Includes the two attachment downloads:
+/// they write to the local filesystem, which READ_ONLY must also prevent.
+const WRITE_TOOL_COUNT: usize = 32;
 
 fn jira_config() -> ServiceConfig {
     ServiceConfig {

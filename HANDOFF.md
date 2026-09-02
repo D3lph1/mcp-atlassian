@@ -34,7 +34,7 @@ Phases 1–5 are done. A functionally complete MCP server for Jira + Confluence:
   its newest comments, then asks for a plan (D30)
 - TTL cache: `CACHE_TTL` seconds, reference data only (projects, issue types,
   boards, link types, fields, spaces), off by default (D25)
-- Tests: 161 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
+- Tests: 170 (wiremock + end-to-end over an in-memory transport), clippy clean; CI (fmt/clippy/test, musl artifact,
   docker); scratch Dockerfile
 - Binary: 3.6 MB stdio / 3.9 MB with http; idle RSS ~2 MB (target < 30 MB —
   comfortably under). The audit log added ~16 KB (chrono was already in the
@@ -90,6 +90,15 @@ Known loose ends:
 
 ## Notes
 
+**Review of 2026-09-02 (D31).** Three defects, all the same shape — a rule
+applied at some call sites and forgotten at others: attachment downloads
+annotated read-only while writing to local disk, unescaped path segments
+letting an interpolated issue key steer the request elsewhere, and ten list
+tools missing the page-size cap. Each fix moved the rule to the boundary. Two
+duplications came out with them: `cached()` and the attachment file helpers.
+Nothing else in the sweep needed changing — cache discipline (D25), resource
+URI validation, OAuth refresh serialization and error wording all held.
+
 **Config in a file: not doing (D28).** An MCP stdio server is launched by its
 client from a config file that already exists and is not ours. A second one
 splits settings across two places, adds a precedence matrix, and forces every
@@ -119,7 +128,7 @@ on writes — a `create_project` through this server still waits out the TTL.
 
 ## Key files
 
-- `DECISIONS.md` — 30 architecture decisions (D1–D30); read before structural
+- `DECISIONS.md` — 31 architecture decisions (D1–D31); read before structural
   changes
 - `CLAUDE.md` — commands, layout, conventions, env vars, roadmap
 - `crates/atlassian-{jira,confluence}/src/tools/` — tools, next to the

@@ -99,6 +99,9 @@ impl AtlassianClient {
     /// `content` links are absolute, and we refuse to send credentials
     /// anywhere else.
     pub async fn get_bytes(&self, path_or_url: &str) -> Result<Vec<u8>> {
+        if !path_or_url.starts_with("http://") && !path_or_url.starts_with("https://") {
+            check_path(path_or_url)?;
+        }
         let url = if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
             let url = Url::parse(path_or_url).map_err(|e| Error::InvalidUrl {
                 url: path_or_url.to_string(),
@@ -154,6 +157,7 @@ impl AtlassianClient {
         path: &str,
         query: &[(&str, &str)],
     ) -> Result<RequestBuilder> {
+        check_path(path)?;
         let url = self
             .base_url
             .join(path.trim_start_matches('/'))
@@ -234,6 +238,45 @@ impl AtlassianClient {
     }
 }
 
+/// Rejects a request path that would resolve somewhere other than the endpoint
+/// it names.
+///
+/// Endpoint paths are built with `format!`, interpolating values that reach us
+/// from the model — an issue key, a page id, an attachment id. `Url::join`
+/// normalizes `..` and honours `?`, so `PROJ-1/../../../myself` or
+/// `PROJ-1?expand=x` in one of those slots redirects the request to a
+/// different endpoint, carrying the user's credentials and the original HTTP
+/// method. For `DELETE` that is worse than deleting the issue that was asked
+/// for.
+///
+/// The check lives here rather than at the ~40 call sites for the reason all
+/// the other invariants in this server do: a new endpoint cannot forget it.
+/// Rejecting rather than percent-encoding is deliberate — every value that
+/// reaches a path segment is an identifier (`PROJ-123`, `123456`, `att10001`),
+/// so anything holding a path or query character is a mistake worth reporting,
+/// not input worth repairing. `resources.rs` already applies the same rule to
+/// URIs (D24); this closes the same hole on the tool side.
+fn check_path(path: &str) -> Result<()> {
+    let offending = if path.contains('?') {
+        Some("a query string (`?`) — query parameters are passed separately")
+    } else if path.contains('#') {
+        Some("a fragment (`#`)")
+    } else if path.split('/').any(|segment| segment == "..") {
+        Some("a `..` segment, which would resolve to a different endpoint")
+    } else {
+        None
+    };
+    match offending {
+        None => Ok(()),
+        Some(reason) => Err(Error::InvalidUrl {
+            url: path.to_string(),
+            message: format!(
+                "request path contains {reason}; check the issue key, page id or                  attachment id that was passed"
+            ),
+        }),
+    }
+}
+
 /// Pulls a human-readable message out of an Atlassian error body.
 /// Jira uses `{"errorMessages": [...], "errors": {...}}`, Confluence uses
 /// `{"message": "..."}`.
@@ -260,4 +303,47 @@ fn extract_message(body: &str) -> Option<String> {
         .get("message")
         .and_then(|v| v.as_str())
         .map(String::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_path;
+
+    #[test]
+    fn an_ordinary_endpoint_path_is_accepted() {
+        for path in [
+            "/rest/api/2/issue/PROJ-123",
+            "rest/api/2/issue/PROJ-123/comment",
+            "/rest/api/content/123456/child/page",
+            "/rest/agile/1.0/board/7/sprint",
+            // Percent-encoded dots are literal characters, not a traversal.
+            "/rest/api/2/issue/%2e%2e",
+        ] {
+            assert!(check_path(path).is_ok(), "{path}");
+        }
+    }
+
+    #[test]
+    fn a_path_that_would_resolve_elsewhere_is_rejected() {
+        // What an interpolated issue key can do if nothing checks it: escape
+        // the endpoint, or bolt on a query string.
+        for path in [
+            "/rest/api/2/issue/../../../rest/api/2/myself",
+            "/rest/api/2/issue/..",
+            "/rest/api/2/issue/PROJ-1?expand=changelog",
+            "/rest/api/2/issue/PROJ-1#fragment",
+        ] {
+            let error = check_path(path).unwrap_err().to_string();
+            assert!(error.contains(path), "{path}: {error}");
+        }
+    }
+
+    #[test]
+    fn the_rejection_says_which_value_to_look_at() {
+        let error = check_path("/rest/api/2/issue/PROJ-1?x=1")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("issue key"), "{error}");
+        assert!(error.contains("query string"), "{error}");
+    }
 }

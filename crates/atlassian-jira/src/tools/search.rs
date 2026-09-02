@@ -9,7 +9,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use atlassian_client::mcp::{to_mcp_error, MAX_SEARCH_RESULTS};
+use atlassian_client::mcp::{page_size, to_mcp_error};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchArgs {
@@ -37,7 +37,7 @@ impl JiraTools {
     ) -> Result<Json<SearchPage>, McpError> {
         let params = SearchParams {
             jql: args.jql,
-            max_results: args.max_results.unwrap_or(10).min(MAX_SEARCH_RESULTS),
+            max_results: page_size(args.max_results, 10),
             fields: args.fields,
             start_at: args.start_at,
             next_page_token: args.next_page_token,

@@ -9,7 +9,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use atlassian_client::mcp::{status_result, to_mcp_error, StatusResult, MAX_SEARCH_RESULTS};
+use atlassian_client::mcp::{page_size, status_result, to_mcp_error, StatusResult};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetBoardsArgs {
@@ -65,7 +65,7 @@ impl JiraTools {
     ) -> Result<Json<AgilePage<Board>>, McpError> {
         let boards = self
             .client()
-            .get_boards(args.project_key.as_deref(), args.max_results.unwrap_or(25))
+            .get_boards(args.project_key.as_deref(), page_size(args.max_results, 25))
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(boards))
@@ -97,10 +97,7 @@ impl JiraTools {
     ) -> Result<Json<SearchPage>, McpError> {
         let page = self
             .client()
-            .get_sprint_issues(
-                args.sprint_id,
-                args.max_results.unwrap_or(25).min(MAX_SEARCH_RESULTS),
-            )
+            .get_sprint_issues(args.sprint_id, page_size(args.max_results, 25))
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(page))
@@ -138,7 +135,7 @@ impl JiraTools {
             .get_board_issues(
                 args.board_id,
                 args.jql.as_deref(),
-                args.max_results.unwrap_or(25).min(MAX_SEARCH_RESULTS),
+                page_size(args.max_results, 25),
             )
             .await
             .map_err(to_mcp_error)?;

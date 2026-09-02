@@ -95,10 +95,7 @@ impl JiraClient {
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<T>>,
     {
-        match &self.cache {
-            Some(cache) => cache.get_or_fetch(key, fetch).await,
-            None => fetch().await,
-        }
+        atlassian_client::cached(self.cache.as_deref(), key, fetch).await
     }
 
     /// Returns the currently authenticated user. Cheap smoke-test endpoint —

@@ -9,7 +9,7 @@ use rmcp::{
 use serde::Deserialize;
 
 use super::storage::{page_to_markdown_view, to_storage, PageView};
-use atlassian_client::mcp::{list_result, to_mcp_error, ListResult};
+use atlassian_client::mcp::{list_result, page_size, to_mcp_error, ListResult};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceAddCommentArgs {
@@ -88,7 +88,7 @@ impl ConfluenceTools {
     ) -> Result<Json<ListResult<PageView>>, McpError> {
         let comments = self
             .client()
-            .get_comments(&args.page_id, args.limit.unwrap_or(10))
+            .get_comments(&args.page_id, page_size(args.limit, 10))
             .await
             .map_err(to_mcp_error)?;
         let views: Vec<PageView> = comments.results.iter().map(page_to_markdown_view).collect();
@@ -122,7 +122,7 @@ impl ConfluenceTools {
     ) -> Result<Json<ListResult<PageView>>, McpError> {
         let comments = self
             .client()
-            .get_inline_comments(&args.page_id, args.limit.unwrap_or(25))
+            .get_inline_comments(&args.page_id, page_size(args.limit, 25))
             .await
             .map_err(to_mcp_error)?;
         let views: Vec<PageView> = comments.results.iter().map(page_to_markdown_view).collect();

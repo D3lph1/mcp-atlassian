@@ -10,7 +10,7 @@ use rmcp::{
 use serde::Deserialize;
 
 use super::storage::{page_to_markdown_view, PageDiff, PageView};
-use atlassian_client::mcp::to_mcp_error;
+use atlassian_client::mcp::{page_size, to_mcp_error};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetHistoryArgs {
@@ -50,7 +50,7 @@ impl ConfluenceTools {
     ) -> Result<Json<ResultsPage<VersionInfo>>, McpError> {
         let versions = self
             .client()
-            .get_page_versions(&args.page_id, args.limit.unwrap_or(25))
+            .get_page_versions(&args.page_id, page_size(args.limit, 25))
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(versions))

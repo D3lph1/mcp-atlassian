@@ -602,3 +602,45 @@ when it is configured and at least one of its tools survived filtering. So
 `/jira_issue` cannot be a way around an `ENABLED_TOOLS` that removed Jira —
 the same rule D24 already applies to `jira://`, which is why the flag is named
 for the product rather than for either surface.
+
+## D31. Guards belong at the boundary, not at the call site
+Three defects found in one review shared a shape: a rule the project had
+already decided, applied at some call sites and forgotten at others. The fixes
+moved each rule to the one place it cannot be forgotten.
+
+**A local write is a write.** `jira_download_attachment` and its Confluence
+twin were annotated `readOnlyHint: true` — true of Atlassian, false of the
+machine. The annotation is the single source of truth for three mechanisms
+(D22, D23, D26), so all three were wrong at once: `READ_ONLY=true` kept the
+tools registered, the audit log never recorded them, and `DRY_RUN` let them
+run. A "read-only" server could overwrite `~/.ssh/authorized_keys` at a path
+the model chose, silently. They are now `readOnlyHint: false` +
+`destructiveHint: true`, and `_download_` joined the verb list the annotation
+test cross-checks against.
+
+**A path segment is data.** Endpoint paths are built with `format!`,
+interpolating an issue key or page id that reaches us from the model. `Url::join`
+normalizes `..` and honours `?`, so `PROJ-1/../../../myself` redirected the
+request to another endpoint with the user's credentials and the original
+method — for `DELETE`, worse than deleting the issue that was named. The check
+now lives in `AtlassianClient::request`, not at the ~40 call sites. It rejects
+rather than encodes: every value reaching a path segment is an identifier, so
+one holding a path or query character is a mistake worth reporting.
+`resources.rs` already applied this rule to URIs; the tool side had no
+equivalent.
+
+**A page size is capped.** Eight list tools clamped their `limit` to
+`MAX_SEARCH_RESULTS`; ten had grown the `unwrap_or` without the `.min`, so
+`limit: 100000` went to Atlassian unchanged and flooded the context — the
+failure D9 exists to prevent. All eighteen now go through
+`mcp::page_size(requested, default)`, which is also what a new tool reaches
+for. `confluence_get_space_pages` defaulted to 100, above the cap; it is now
+50 and says so. Pagination *offsets* are deliberately not clamped — capping an
+offset caps paging itself.
+
+The generalization: when the same decision is written out at N call sites, the
+question is not whether one of them is wrong but which one, and adding the
+N+1st is how it happens. Two shared helpers came out of the same review for
+the same reason — `cached()` (duplicated verbatim in both product clients) and
+`save_attachment` / `read_for_upload` (the halves of the attachment tools that
+were not product-specific).

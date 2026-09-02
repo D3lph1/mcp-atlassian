@@ -13,7 +13,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use atlassian_client::mcp::{
-    list_result, status_result, to_mcp_error, ListResult, StatusResult, MAX_SEARCH_RESULTS,
+    list_result, page_size, status_result, to_mcp_error, ListResult, StatusResult,
 };
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -181,7 +181,7 @@ impl JiraTools {
     ) -> Result<Json<ListResult<ChangelogEntry>>, McpError> {
         let entries = self
             .client()
-            .get_changelog(&args.issue_key, args.max_results.unwrap_or(25))
+            .get_changelog(&args.issue_key, page_size(args.max_results, 25))
             .await
             .map_err(to_mcp_error)?;
         list_result(entries)
@@ -197,10 +197,7 @@ impl JiraTools {
     ) -> Result<Json<SearchPage>, McpError> {
         let page = self
             .client()
-            .get_project_issues(
-                &args.project_key,
-                args.max_results.unwrap_or(25).min(MAX_SEARCH_RESULTS),
-            )
+            .get_project_issues(&args.project_key, page_size(args.max_results, 25))
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(page))

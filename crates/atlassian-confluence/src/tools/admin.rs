@@ -10,7 +10,7 @@ use rmcp::{
 use serde::Deserialize;
 
 use super::storage::to_storage;
-use atlassian_client::mcp::{list_result, to_mcp_error, ListResult, MAX_SEARCH_RESULTS};
+use atlassian_client::mcp::{list_result, page_size, to_mcp_error, ListResult};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ListTemplatesArgs {
@@ -78,7 +78,7 @@ impl ConfluenceTools {
     ) -> Result<Json<ResultsPage<Template>>, McpError> {
         let templates = self
             .client()
-            .list_templates(args.space_key.as_deref(), args.limit.unwrap_or(25))
+            .list_templates(args.space_key.as_deref(), page_size(args.limit, 25))
             .await
             .map_err(to_mcp_error)?;
         Ok(Json(templates))
@@ -180,10 +180,7 @@ impl ConfluenceTools {
     ) -> Result<Json<ListResult<Person>>, McpError> {
         let users = self
             .client()
-            .search_users(
-                &args.query,
-                args.limit.unwrap_or(10).min(MAX_SEARCH_RESULTS),
-            )
+            .search_users(&args.query, page_size(args.limit, 10))
             .await
             .map_err(to_mcp_error)?;
         list_result(users)

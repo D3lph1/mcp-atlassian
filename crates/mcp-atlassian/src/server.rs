@@ -182,14 +182,20 @@ impl AtlassianServer {
 
         // Prompts drive the tools, so they follow the same qualification as
         // resources: a product whose tools are all gone has nothing to offer.
+        // Pruned by name prefix rather than by emptying the router, so a
+        // second product's prompts are not removed along with the first's.
         let mut prompt_router =
             project_prompt_router(atlassian_jira::prompts::router(), |s: &Self| {
                 s.jira
                     .as_ref()
                     .expect("jira prompts pruned when unconfigured")
             });
-        if !jira_available {
-            prompt_router = PromptRouter::new();
+        for prompt in prompt_router.list_all() {
+            let unavailable = (!jira_available && prompt.name.starts_with("jira_"))
+                || (!confluence_available && prompt.name.starts_with("confluence_"));
+            if unavailable {
+                prompt_router.remove_route(&prompt.name);
+            }
         }
 
         Ok(Self {

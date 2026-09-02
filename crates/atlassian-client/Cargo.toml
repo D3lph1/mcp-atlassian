@@ -9,7 +9,7 @@ repository.workspace = true
 [features]
 default = []
 # Shared MCP result types (ListResult / StatusResult) used by product crates.
-mcp = ["dep:rmcp", "dep:schemars"]
+mcp = ["dep:rmcp", "dep:schemars", "tokio/fs"]
 
 [dependencies]
 rmcp = { workspace = true, optional = true }

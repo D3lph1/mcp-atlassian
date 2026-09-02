@@ -10,7 +10,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use atlassian_client::mcp::{list_result, to_mcp_error, ListResult, MAX_SEARCH_RESULTS};
+use atlassian_client::mcp::{list_result, page_size, to_mcp_error, ListResult};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchUsersArgs {
@@ -43,10 +43,7 @@ impl JiraTools {
     ) -> Result<Json<ListResult<User>>, McpError> {
         let users = self
             .client()
-            .search_users(
-                &args.query,
-                args.max_results.unwrap_or(10).min(MAX_SEARCH_RESULTS),
-            )
+            .search_users(&args.query, page_size(args.max_results, 10))
             .await
             .map_err(to_mcp_error)?;
         list_result(users)

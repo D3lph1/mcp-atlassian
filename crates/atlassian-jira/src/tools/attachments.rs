@@ -10,7 +10,9 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use atlassian_client::mcp::{list_result, status_result, to_mcp_error, ListResult, StatusResult};
+use atlassian_client::mcp::{
+    list_result, read_for_upload, save_attachment, to_mcp_error, ListResult, StatusResult,
+};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetAttachmentsArgs {
@@ -55,8 +57,8 @@ impl JiraTools {
     }
 
     #[tool(
-        description = "Download a Jira issue attachment to a local file. Get attachment ids from jira_get_attachments first.",
-        annotations(read_only_hint = true)
+        description = "Download a Jira issue attachment to a local file. Writes to the local filesystem and overwrites save_path if it exists. Get attachment ids from jira_get_attachments first.",
+        annotations(read_only_hint = false, destructive_hint = true)
     )]
     async fn jira_download_attachment(
         &self,
@@ -83,16 +85,7 @@ impl JiraTools {
             .download_attachment(&attachment.content)
             .await
             .map_err(to_mcp_error)?;
-        let size = bytes.len();
-        tokio::fs::write(&args.save_path, bytes)
-            .await
-            .map_err(|e| {
-                McpError::internal_error(format!("failed to write {}: {e}", args.save_path), None)
-            })?;
-        status_result(format!(
-            "Saved {} ({size} bytes) to {}",
-            attachment.filename, args.save_path
-        ))
+        save_attachment(bytes, &attachment.filename, &args.save_path).await
     }
 
     #[tool(
@@ -103,14 +96,7 @@ impl JiraTools {
         &self,
         Parameters(args): Parameters<UploadAttachmentArgs>,
     ) -> Result<Json<ListResult<Attachment>>, McpError> {
-        let bytes = tokio::fs::read(&args.file_path).await.map_err(|e| {
-            McpError::invalid_params(format!("cannot read {}: {e}", args.file_path), None)
-        })?;
-        let file_name = std::path::Path::new(&args.file_path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("attachment")
-            .to_string();
+        let (file_name, bytes) = read_for_upload(&args.file_path).await?;
         let attachments = self
             .client()
             .upload_attachment(&args.issue_key, &file_name, bytes)

@@ -8,7 +8,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use atlassian_client::mcp::{to_mcp_error, MAX_SEARCH_RESULTS};
+use atlassian_client::mcp::{page_size, to_mcp_error};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ConfluenceSearchArgs {
@@ -34,7 +34,8 @@ impl ConfluenceTools {
             .client()
             .search(
                 &args.cql,
-                args.limit.unwrap_or(10).min(MAX_SEARCH_RESULTS),
+                page_size(args.limit, 10),
+                // An offset, not a page size — capping it would cap pagination.
                 args.start.unwrap_or(0),
             )
             .await

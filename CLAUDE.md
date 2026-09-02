@@ -136,11 +136,17 @@ is a plain REST library (D15).
   `outputSchema` (D20). Lists go through `ListResult<T>`, write operations
   through `StatusResult`; `structuredContent` must be an object, not an array.
 - Every tool must carry `annotations(read_only_hint = ...)`; write tools add
-  `destructive_hint`. That annotation is what `READ_ONLY`, the audit log
+  `destructive_hint`. "Read-only" means *changes nothing*, not "changes
+  nothing in Atlassian" — a tool that writes a local file is a write (D31). That annotation is what `READ_ONLY`, the audit log
   and `DRY_RUN` all key off, and an unannotated tool is treated as a write
   (D22). Tests fail if it is missing.
 - No new heavyweight deps without a DECISIONS.md entry; check binary size
   impact (`cargo bloat`) for anything non-trivial.
+- List tools take their page size from `mcp::page_size(args.limit, default)`,
+  never a bare `unwrap_or` — an uncapped limit floods the context (D31).
+  Pagination offsets are not page sizes and are not capped.
+- Values interpolated into an endpoint path are checked once, in
+  `AtlassianClient::request`; do not re-implement that per call site (D31).
 - Tests never hit real Atlassian instances; use wiremock + fixtures (D14).
 - Caching is opt-in and for reference data only (D25). A new client method
   that returns issues, page bodies or anything a user edits must not go
