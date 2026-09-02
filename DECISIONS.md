@@ -1031,3 +1031,24 @@ Linux aarch64 cross-compilation, macOS x86_64, Windows — plus the Coveralls
 upload, which needs `COVERALLS_REPO_TOKEN` for a private repository (D45).
 The Docker image has not been built on the development machine either; the
 CI job covers it.
+
+## D47. The published image is assembled, not compiled, in CI
+`docker build .` compiles the server inside `rust:1-alpine`, which is right
+for a local build and wrong for publishing: the release profile is
+`lto = true`, `codegen-units = 1`, `opt-level = "z"` (D12), and running that
+under QEMU to get `linux/arm64` on an x86_64 runner costs tens of minutes a
+run. The matrix already builds both static musl binaries natively (D45), so
+the image is a `COPY` of the right one — `Dockerfile.ci`, `ARG TARGETARCH`,
+`FROM scratch`. Nothing executes during the build, so buildx needs no
+emulation for a two-platform manifest.
+
+The cost is two Dockerfiles. `Dockerfile` stays self-contained because the
+README tells a user to run it and because it is the only thing that proves
+the source-to-image path still works — CI keeps building it, unpushed. Their
+runtime stages must stay identical; that is four lines each.
+
+Tags: `latest` and `sha-<commit>` on master, `X.Y.Z` and `X.Y` on a `v*`
+tag. Auth is the workflow's own `GITHUB_TOKEN` with `packages: write`, so
+there is no secret to manage. The first push creates the package private —
+it has to be made public once by hand in the package settings, and the
+repository linked from there.

@@ -18,7 +18,8 @@ Download a binary from [Releases](https://github.com/d3lph1/mcp-atlassian/releas
 
 ```bash
 cargo install --git https://github.com/d3lph1/mcp-atlassian mcp-atlassian --features http
-docker build -t mcp-atlassian .   # ~5 MB scratch image
+docker pull ghcr.io/d3lph1/mcp-atlassian:latest   # ~5 MB scratch image, amd64 + arm64
+docker build -t mcp-atlassian .                   # or build it yourself
 ```
 
 ## Configure

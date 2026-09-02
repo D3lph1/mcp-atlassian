@@ -44,7 +44,10 @@ mcp-atlassian --version        # the only flags: --version, --help
 CI (`.github/workflows/ci.yml`): fmt + clippy + test, coverage to Coveralls
 with an 85% floor, cargo-deny, binaries for Linux musl x86_64/aarch64, macOS
 x86_64/aarch64 and Windows x86_64, docker; a `v*` tag publishes a release
-(D45).
+(D45). A push to master or a `v*` tag also publishes
+`ghcr.io/d3lph1/mcp-atlassian` for amd64 and arm64, assembled from those musl
+binaries by `Dockerfile.ci` — no emulated build (D47). `Dockerfile` stays the
+self-contained local build; keep its runtime stage identical to the CI one.
 
 Release build (size-optimized, see profile in Cargo.toml):
 
