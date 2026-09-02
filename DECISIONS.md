@@ -1022,12 +1022,15 @@ read, so they work on an unconfigured machine.
 The status and backlog used to live in two handoff files; they were folded
 in here and removed, so there is one document to keep true.
 
-**Where things stand (2026-09-03).** 0.1.0 is released. The CI matrix ran
-green on a tag: five binaries on the GitHub release with checksums, and
+**Where things stand (2026-09-03).** 0.1.1 is released; 0.1.0 was the first
+tag, and 0.1.1 carries the startup-output ordering (D29) and the CI move off
+the actions still running on Node 20. Both tags went green through the whole
+matrix: five binaries on the GitHub release with checksums, and
 `ghcr.io/d3lph1/mcp-atlassian` published as a two-platform image
-(`linux/amd64`, `linux/arm64`, D47) tagged `0.1.0`, `0.1` and `latest`. The
-image is 5.07 MB and `docker run --rm ghcr.io/d3lph1/mcp-atlassian:latest
---version` answers `mcp-atlassian 0.1.0`.
+(`linux/amd64`, `linux/arm64`, D47). `0.1.1`, `0.1` and `latest` share one
+digest; `0.1.0` keeps its own. The image is 5.07 MB and `docker run --rm
+ghcr.io/d3lph1/mcp-atlassian:latest --version` answers the version it is
+tagged with.
 
 70 tools (40 Jira, 30 Confluence), four prompts, four resource templates,
 `issue_key` completion. 245 tests against wiremock and an in-memory MCP
