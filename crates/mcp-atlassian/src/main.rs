@@ -1,6 +1,6 @@
 use anyhow::Context;
 use clap::Parser;
-use mcp_atlassian::cli::{Cli, Command, Format};
+use mcp_atlassian::cli::{Cli, Command, Format, ServeArgs};
 use mcp_atlassian::server::AtlassianServer;
 use mcp_atlassian_client::{Config, Transport};
 use rmcp::{transport::stdio, ServiceExt};
@@ -10,7 +10,7 @@ use tracing_subscriber::{filter::Targets, prelude::*};
 async fn main() -> anyhow::Result<()> {
     // Parsed before the configuration is read, so every command except
     // `serve` — and --help, --version — works on a machine with no token.
-    match Cli::parse().command {
+    let serve = match Cli::parse().command {
         Some(Command::Completions { shell }) => {
             print!("{}", Cli::completion_script(shell));
             return Ok(());
@@ -22,11 +22,15 @@ async fn main() -> anyhow::Result<()> {
             }
             return Ok(());
         }
-        // No command is `serve`: that is what an MCP client's config runs.
-        None | Some(Command::Serve) => {}
-    }
+        Some(Command::Serve(args)) => *args,
+        // No command is `serve` with no flags: that is what an MCP client's
+        // config runs, and it must keep working.
+        None => ServeArgs::default(),
+    };
 
-    let config = Config::from_env().context("failed to load configuration")?;
+    // Flags laid over the environment; `Config::read` stays the one place that
+    // parses and validates any of it (D8).
+    let config = Config::read(&serve.environment()).context("failed to load configuration")?;
     // `Targets` reads the same `crate=level` directives as `EnvFilter` and
     // needs no regex, which was ~130 KB of the binary (D41).
     let filter: Targets = config

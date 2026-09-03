@@ -46,6 +46,29 @@ binary for people who never use it.
 These names are what existing Atlassian MCP servers use, so switching to this
 server is a change of the launch command, not of the client configuration.
 
+Every setting is also a flag on `serve`, and the environment remains the one
+thing that reads them. The variables alone were undiscoverable: 15 fields and
+some 25 names existed only in this repository's documentation, so nobody at a
+terminal could find out what the server takes without opening a file. Now
+`mcp-atlassian serve --help` is that reference, grouped by area, each flag
+naming the variable it stands in for.
+
+The flags do not parse anything. `ServeArgs` holds plain `Option<String>`s,
+`overrides()` turns the ones actually given into `(variable, value)` pairs,
+and those are layered over the process environment through the existing `Env`
+trait before `Config::read` sees them. So a flag wins over a variable, an
+absent flag changes nothing, and `config.rs` — the most heavily tested file
+here, with secret resolution, OAuth grouping and every validation message —
+was not touched at all. Using clap's own `env = "..."` support would have
+moved parsing into clap and quietly narrowed it: `READ_ONLY=yes` works
+because `is_truthy` accepts it, and clap would not.
+
+No secret is a flag. Arguments are visible to every process on the machine
+through `ps` and are kept in shell history, so `JIRA_API_TOKEN` and the rest
+come from the environment or from a file — and the *path* is a flag,
+`--jira-api-token-file`, which is both safe and discoverable (D28). A test
+asserts that `--jira-api-token` and its six siblings are rejected.
+
 The log filter is `LOG_FILTER`, not `RUST_LOG`, and not `LOG_LEVEL`. Every
 other variable here is addressed to an operator and says nothing about the
 implementation — `READ_ONLY`, `DRY_RUN`, `CACHE_TTL`, `TRANSPORT` — while

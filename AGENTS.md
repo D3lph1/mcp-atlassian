@@ -77,6 +77,14 @@ docker build -t mcp-atlassian .                            # scratch image, ~5 M
 
 ## Configuration (env vars)
 
+Every variable below is also a flag on `serve` — `JIRA_URL` is `--jira-url`,
+`READ_ONLY` is `--read-only` — and a flag wins over its variable (D8).
+`mcp-atlassian serve --help` lists them. Secrets are the exception: they are
+environment-only, because arguments show up in `ps`; the flag is the file
+path, `--jira-api-token-file`. Flags carry no parsing of their own — they are
+layered over the environment and read by `Config::read`, which stays the one
+place that understands any of it.
+
 Variable names follow the conventions established by existing Atlassian MCP
 servers, so an existing client config works unchanged. Either service is
 optional — tools register only for configured services.

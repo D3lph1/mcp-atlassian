@@ -67,6 +67,17 @@ The switches worth knowing:
 | `JIRA_DEPLOYMENT` | `cloud` or `server` when the auth mode does not tell |
 | `TRANSPORT=streamable-http` | HTTP instead of stdio; `HOST`, `PORT`, `MCP_BEARER_TOKEN` |
 
+Every one of them is also a flag on `serve`, and the flag wins:
+
+```bash
+mcp-atlassian serve --jira-url https://your-company.atlassian.net --read-only
+```
+
+`mcp-atlassian serve --help` lists the lot, grouped by area, each flag naming
+the variable behind it. Tokens are deliberately not flags — arguments are
+visible in `ps` and kept in shell history — so they come from the environment
+or from a file that `--jira-api-token-file` points at.
+
 The full list is in [AGENTS.md](AGENTS.md).
 
 Shell completion comes from the binary itself — Homebrew installs it, and

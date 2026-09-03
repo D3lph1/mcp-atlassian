@@ -8,9 +8,9 @@
 
 use std::process::Command;
 
-use clap::{CommandFactory, ValueEnum};
+use clap::{CommandFactory, Parser, ValueEnum};
 use clap_complete::Shell;
-use mcp_atlassian::cli::Cli;
+use mcp_atlassian::cli::{Cli, Command as CliCommand};
 
 /// The binary cargo just built, run with nothing in the environment.
 fn run(args: &[&str]) -> (bool, String) {
@@ -35,8 +35,9 @@ fn the_commands_work_without_any_configuration() {
     for command in ["serve", "tools", "completions"] {
         assert!(out.contains(command), "{command} is not in --help:\n{out}");
     }
-    // The help is where a user looks for configuration; it must name it.
-    assert!(out.contains("JIRA_URL"), "{out}");
+    // Configuration is documented once, under `serve`; the top level points
+    // there rather than repeating a list that would drift.
+    assert!(out.contains("serve --help"), "{out}");
 
     let (ok, out) = run(&["tools"]);
     assert!(ok, "{out}");
@@ -141,5 +142,119 @@ fn every_command_and_option_appears_in_every_script() {
                 "{shell}: `{name}` is missing from the completion script"
             );
         }
+    }
+}
+
+/// The flags on `serve` stand in for environment variables, so what matters
+/// is that each maps to the spelling `Config::read` expects. Parsed here
+/// rather than run, because a typo in the mapping is invisible from outside.
+fn overrides_for(args: &[&str]) -> Vec<(&'static str, String)> {
+    let mut argv = vec!["mcp-atlassian", "serve"];
+    argv.extend_from_slice(args);
+    match Cli::try_parse_from(argv).expect("parses").command {
+        Some(CliCommand::Serve(serve)) => serve.overrides(),
+        other => panic!("expected serve, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_flag_stands_in_for_its_variable() {
+    for (flag, value, variable) in [
+        ("--jira-url", "https://x.atlassian.net", "JIRA_URL"),
+        (
+            "--confluence-url",
+            "https://x.atlassian.net/wiki",
+            "CONFLUENCE_URL",
+        ),
+        ("--jira-deployment", "server", "JIRA_DEPLOYMENT"),
+        ("--enabled-tools", "jira_*", "ENABLED_TOOLS"),
+        ("--disabled-tools", "*_delete_*", "DISABLED_TOOLS"),
+        ("--audit-log", "/tmp/a.jsonl", "AUDIT_LOG_FILE"),
+        ("--attachment-dir", "/tmp", "ATTACHMENT_DIR"),
+        ("--cache-ttl", "60", "CACHE_TTL"),
+        ("--request-timeout", "10", "REQUEST_TIMEOUT"),
+        ("--log-filter", "debug", "LOG_FILTER"),
+        ("--transport", "streamable-http", "TRANSPORT"),
+        ("--port", "9000", "PORT"),
+        ("--jira-api-token-file", "/run/s", "JIRA_API_TOKEN_FILE"),
+        ("--oauth-client-id", "abc", "ATLASSIAN_OAUTH_CLIENT_ID"),
+    ] {
+        let overrides = overrides_for(&[flag, value]);
+        assert_eq!(
+            overrides,
+            vec![(variable, value.to_string())],
+            "{flag} should stand in for {variable}"
+        );
+    }
+}
+
+/// A switch left off must say nothing, or it would overwrite the variable
+/// with `false` — and the variable understands spellings clap does not.
+#[test]
+fn a_switch_left_off_overrides_nothing() {
+    assert!(overrides_for(&[]).is_empty());
+    assert_eq!(
+        overrides_for(&["--read-only"]),
+        vec![("READ_ONLY", "true".to_string())]
+    );
+    assert_eq!(
+        overrides_for(&["--dry-run", "--confirm-destructive", "--no-banner"]).len(),
+        3
+    );
+}
+
+/// Arguments are visible in `ps` and land in shell history, so no secret may
+/// be one — only the file a token is read from (D28).
+#[test]
+fn no_secret_can_be_passed_as_a_flag() {
+    for secret in [
+        "--jira-api-token",
+        "--jira-personal-token",
+        "--confluence-api-token",
+        "--confluence-personal-token",
+        "--oauth-client-secret",
+        "--oauth-refresh-token",
+        "--mcp-bearer-token",
+    ] {
+        let (ok, out) = run(&["serve", secret, "value"]);
+        assert!(!ok, "{secret} must not be accepted: {out}");
+    }
+
+    // The file each is read from is a flag, because a path is not a secret.
+    let (ok, out) = run(&["serve", "--help"]);
+    assert!(ok, "{out}");
+    for flag in [
+        "--jira-api-token-file",
+        "--jira-personal-token-file",
+        "--oauth-client-secret-file",
+        "--mcp-bearer-token-file",
+    ] {
+        assert!(out.contains(flag), "{flag} is not in `serve --help`");
+    }
+}
+
+/// `serve --help` is the reference now, so it has to name the variable behind
+/// each flag — otherwise the two documents drift.
+#[test]
+fn serve_help_names_the_variable_behind_each_flag() {
+    let (ok, out) = run(&["serve", "--help"]);
+    assert!(ok, "{out}");
+    for variable in [
+        "JIRA_URL",
+        "CONFLUENCE_URL",
+        "READ_ONLY",
+        "DRY_RUN",
+        "ENABLED_TOOLS",
+        "AUDIT_LOG_FILE",
+        "ATTACHMENT_DIR",
+        "CACHE_TTL",
+        "LOG_FILTER",
+        "TRANSPORT",
+        "MCP_BEARER_TOKEN_FILE",
+    ] {
+        assert!(
+            out.contains(variable),
+            "{variable} is not in `serve --help`"
+        );
     }
 }
