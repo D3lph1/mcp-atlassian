@@ -90,9 +90,9 @@ path, `--jira-api-token-file`. Flags carry no parsing of their own — they are
 layered over the environment and read by `Config::read`, which stays the one
 place that understands any of it.
 
-Variable names follow the conventions established by existing Atlassian MCP
-servers, so an existing client config works unchanged. Either service is
-optional — tools register only for configured services.
+Names are the product and then the thing, so most of them can be guessed
+(D8). Either service is optional — tools register only for configured
+services.
 
 | Var | Purpose |
 |---|---|
@@ -105,7 +105,7 @@ optional — tools register only for configured services.
 | `ATLASSIAN_OAUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_REFRESH_TOKEN` / `_CLOUD_ID` | OAuth 2.0 (Cloud only); all four together, takes precedence over `*_URL` and configures both services (D17) |
 | `ENABLED_TOOLS` | comma-separated allowlist of tool-name patterns; `*` matches any run of characters anywhere (`jira_*`, `*_get_*`, `*_attachment*`); no `*` = exact name; empty = all (D27) |
 | `DISABLED_TOOLS` | same syntax, subtracted from what `ENABLED_TOOLS` allows; deny wins (`ENABLED_TOOLS=jira_*` + `DISABLED_TOOLS=*_delete_*`) (D27) |
-| `READ_ONLY` | `true` → only tools annotated `readOnlyHint` are registered; writes are absent from `tools/list` (D22). Named `READ_ONLY`, not `READ_ONLY_MODE` as other servers spell it (D8) |
+| `READ_ONLY` | `true` → only tools annotated `readOnlyHint` are registered; writes are absent from `tools/list` (D22). Named `READ_ONLY`, without a `_MODE` suffix, so it reads as one of a set (D8) |
 | `DRY_RUN` | `true` → write tools stay listed but are validated and described instead of performed (D26). For demos and prompt rehearsal; reads still execute for real |
 | `CONFIRM_DESTRUCTIVE` | `true` → tools annotated `destructiveHint` ask the user through MCP elicitation before running; clients without elicitation are not blocked (D42) |
 | `AUDIT_LOG_FILE` | path to a JSONL audit log; every write call appends one record (D23). Unset = no auditing |

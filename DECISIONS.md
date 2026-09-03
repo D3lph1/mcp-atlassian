@@ -43,8 +43,10 @@ binary for people who never use it.
 `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`, `JIRA_PERSONAL_TOKEN`,
 `CONFLUENCE_URL`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN`,
 `CONFLUENCE_PERSONAL_TOKEN`, `ENABLED_TOOLS`, `READ_ONLY`.
-These names are what existing Atlassian MCP servers use, so switching to this
-server is a change of the launch command, not of the client configuration.
+The names are predictable rather than invented: the product, then the thing.
+Anyone who has configured an Atlassian integration can guess `JIRA_URL` and
+`CONFLUENCE_API_TOKEN` without reading anything, and a configuration written
+for one deployment reads the same in the next.
 
 Every setting is also a flag on `serve`, and the environment remains the one
 thing that reads them. The variables alone were undiscoverable: 15 fields and
@@ -99,12 +101,11 @@ has no effect so it cannot creep back. The cost is real — muscle memory for
 `-e RUST_LOG=debug` is universal in Rust tooling — and it was accepted
 because the audience here is Atlassian operators, not Rust developers.
 
-One deliberate divergence: the switch other servers spell `READ_ONLY_MODE` is
-`READ_ONLY` here, so the three behaviour switches read as a set — `READ_ONLY`,
+One deliberate choice inside that scheme: the switch is `READ_ONLY`, not
+`READ_ONLY_MODE`, so the three behaviour switches read as a set — `READ_ONLY`,
 `DRY_RUN` (D26), `CACHE_TTL` (D25) — instead of one of them carrying a `_MODE`
-suffix the others do not. No alias: the rename landed before the first release,
-so there is no configuration in the world to keep working. Anyone porting a
-config from another server edits one variable name.
+suffix the others do not. No alias: the rename landed before the first
+release, so there was no configuration in the world to keep working.
 
 ## D9. Full tool coverage (70), organized by domain
 The set started deliberately small and grew to cover the surface users
@@ -395,7 +396,7 @@ cross-check each annotation against what the tool's name implies, so a
 mislabeled tool fails the suite rather than quietly widening read-only mode.
 
 The variable was named `READ_ONLY_MODE` until it acquired siblings; see D8 for
-why it diverges from the name other servers use.
+why it lost the suffix.
 
 ## D23. Audit log: JSONL, driven by the same annotations as read-only mode
 `AUDIT_LOG_FILE=/path/audit.jsonl` appends one JSON object per **write** call:
