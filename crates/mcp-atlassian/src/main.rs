@@ -1,59 +1,26 @@
 use anyhow::Context;
+use clap::Parser;
+use mcp_atlassian::cli::{Cli, Format};
 use mcp_atlassian::server::AtlassianServer;
 use mcp_atlassian_client::{Config, Transport};
 use rmcp::{transport::stdio, ServiceExt};
 use tracing_subscriber::{filter::Targets, prelude::*};
 
-const USAGE: &str = "\
-mcp-atlassian — MCP server for Jira and Confluence
-
-Usage: mcp-atlassian [--version | --help | --list-tools |
-                     --completions <bash|zsh|fish>]
-
-  --list-tools  print every tool this build offers and exit; needs no
-                configuration, and ignores ENABLED_TOOLS and READ_ONLY
-  --completions print a shell completion script, e.g.
-                `eval \"$(mcp-atlassian --completions zsh)\"`
-
-Configured entirely through environment variables (JIRA_URL, JIRA_API_TOKEN,
-CONFLUENCE_URL, READ_ONLY, DRY_RUN, ENABLED_TOOLS, TRANSPORT, …); see
-https://github.com/d3lph1/mcp-atlassian for the full list. Speaks MCP on
-stdin/stdout by default; TRANSPORT=streamable-http serves HTTP instead.";
-
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
-    // The two flags a user checks a binary with, before configuring it.
-    // Handled before anything else, so they work without credentials.
-    if let Some(flag) = std::env::args().nth(1) {
-        match flag.as_str() {
-            "--version" | "-V" => {
-                println!("mcp-atlassian {}", env!("CARGO_PKG_VERSION"));
-                return Ok(());
-            }
-            "--help" | "-h" => {
-                println!("{USAGE}");
-                return Ok(());
-            }
-            // Deliberately before the configuration is read: someone deciding
-            // whether to install this should not need an API token to see
-            // what it offers.
-            "--list-tools" => {
-                print!("{}", mcp_atlassian::catalogue::render());
-                return Ok(());
-            }
-            "--completions" => {
-                let shell = std::env::args().nth(2).unwrap_or_default();
-                let Some(script) = mcp_atlassian::completions::render(&shell) else {
-                    anyhow::bail!(
-                        "unknown shell `{shell}`; try {}",
-                        mcp_atlassian::completions::SHELLS.join(", ")
-                    );
-                };
-                print!("{script}");
-                return Ok(());
-            }
-            other => anyhow::bail!("unknown argument `{other}`; try --help"),
+    // Parsed before the configuration is read, so --help, --version,
+    // --list-tools and --completions work on a machine with no token.
+    let cli = Cli::parse();
+    if let Some(shell) = cli.completions {
+        print!("{}", Cli::completion_script(shell));
+        return Ok(());
+    }
+    if cli.list_tools {
+        match cli.format {
+            Format::Text => print!("{}", mcp_atlassian::catalogue::render()),
+            Format::Json => println!("{}", mcp_atlassian::catalogue::render_json()),
         }
+        return Ok(());
     }
 
     let config = Config::from_env().context("failed to load configuration")?;

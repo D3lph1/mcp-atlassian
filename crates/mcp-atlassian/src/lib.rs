@@ -9,7 +9,7 @@
 pub mod audit;
 pub mod banner;
 pub mod catalogue;
-pub mod completions;
+pub mod cli;
 pub mod confirm;
 pub mod dry_run;
 #[cfg(feature = "http")]

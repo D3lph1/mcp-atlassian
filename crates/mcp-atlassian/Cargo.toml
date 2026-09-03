@@ -30,6 +30,8 @@ mcp-atlassian-client = { workspace = true, features = ["mcp"] }
 mcp-atlassian-jira = { workspace = true, features = ["mcp"] }
 mcp-atlassian-confluence = { workspace = true, features = ["mcp"] }
 anyhow.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true

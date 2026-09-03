@@ -38,7 +38,7 @@ cargo clippy -- -D warnings    # lint, warnings are errors
 cargo fmt                      # format
 cargo run -p mcp-atlassian     # run stdio server (needs env vars, see below)
 cargo test -p mcp-atlassian-jira   # test a single crate
-mcp-atlassian --list-tools     # flags: --version --help --list-tools --completions
+mcp-atlassian --list-tools     # also --format json, --completions <shell>; flags are clap (D45)
 ```
 
 CI (`.github/workflows/ci.yml`): fmt + clippy + test, coverage to Coveralls

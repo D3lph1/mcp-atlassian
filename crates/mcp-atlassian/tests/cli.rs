@@ -8,7 +8,9 @@
 
 use std::process::Command;
 
-use mcp_atlassian::completions::{render, FLAGS, SHELLS};
+use clap::{CommandFactory, ValueEnum};
+use clap_complete::Shell;
+use mcp_atlassian::cli::Cli;
 
 /// The binary cargo just built, run with nothing in the environment.
 fn run(args: &[&str]) -> (bool, String) {
@@ -32,6 +34,8 @@ fn the_flags_work_without_any_configuration() {
     assert!(ok, "{out}");
     assert!(out.contains("--list-tools"), "{out}");
     assert!(out.contains("--completions"), "{out}");
+    // The help is where a user looks for configuration; it must name it.
+    assert!(out.contains("JIRA_URL"), "{out}");
 
     let (ok, out) = run(&["--list-tools"]);
     assert!(ok, "{out}");
@@ -39,54 +43,78 @@ fn the_flags_work_without_any_configuration() {
 }
 
 #[test]
+fn the_catalogue_has_a_machine_readable_form() {
+    let (ok, out) = run(&["--list-tools", "--format", "json"]);
+    assert!(ok, "{out}");
+    let tools: Vec<serde_json::Value> = serde_json::from_str(&out).expect("valid JSON");
+    assert_eq!(tools.len(), 70, "{out}");
+    let get_issue = tools
+        .iter()
+        .find(|t| t["name"] == "jira_get_issue")
+        .expect("jira_get_issue listed");
+    assert_eq!(get_issue["kind"], "read-only");
+    assert_eq!(get_issue["product"], "jira");
+
+    // --format without --list-tools is a mistake, and clap says so.
+    let (ok, out) = run(&["--format", "json"]);
+    assert!(!ok, "{out}");
+    assert!(out.contains("--list-tools"), "{out}");
+}
+
+#[test]
 fn every_shell_gets_a_script_and_anything_else_gets_an_error() {
-    for shell in SHELLS {
-        let (ok, out) = run(&["--completions", shell]);
-        assert!(ok, "{shell}: {out}");
+    for shell in Shell::value_variants() {
+        let name = shell.to_string();
+        let (ok, out) = run(&["--completions", &name]);
+        assert!(ok, "{name}: {out}");
         assert!(
             out.contains("mcp-atlassian"),
-            "{shell}: the script should mention the command: {out}"
+            "{name}: the script should mention the command: {out}"
         );
     }
 
     // Naming the shells is the difference between a usable error and a wall.
     let (ok, out) = run(&["--completions", "tcsh"]);
     assert!(!ok, "an unknown shell should fail: {out}");
-    for shell in SHELLS {
-        assert!(out.contains(shell), "the error should name {shell}: {out}");
-    }
+    assert!(
+        out.contains("zsh"),
+        "the error should list the shells: {out}"
+    );
 
     let (ok, _) = run(&["--completions"]);
     assert!(!ok, "a missing shell argument should fail");
 }
 
-/// A flag added to the CLI but not to a completion script would leave users
-/// unable to tab to it, and nothing else would catch that.
+/// A typo gets a suggestion rather than a bare rejection.
+#[test]
+fn a_misspelled_flag_is_corrected() {
+    let (ok, out) = run(&["--lst-tools"]);
+    assert!(!ok, "{out}");
+    assert!(out.contains("--list-tools"), "{out}");
+}
+
+/// Completions are generated from the same declarations as the help, so every
+/// long flag the parser knows must appear in every script.
 #[test]
 fn every_flag_appears_in_every_script() {
-    for shell in SHELLS {
-        let script = render(shell).expect("a script for every listed shell");
-        for (flag, _) in FLAGS {
-            // fish spells flags without the leading dashes: `-l version`.
-            let spelled = if shell == "fish" {
-                flag.trim_start_matches("--").to_string()
-            } else {
-                flag.to_string()
-            };
+    let command = Cli::command();
+    let flags: Vec<String> = command
+        .get_arguments()
+        .filter_map(|a| a.get_long())
+        .map(|l| format!("--{l}"))
+        .collect();
+    assert!(flags.contains(&"--list-tools".to_string()), "{flags:?}");
+
+    for shell in Shell::value_variants() {
+        let script = Cli::completion_script(*shell);
+        for flag in &flags {
+            // fish and PowerShell spell long flags without the dashes in
+            // places; the bare name is the stable part.
+            let bare = flag.trim_start_matches("--");
             assert!(
-                script.contains(&spelled),
+                script.contains(bare),
                 "{shell}: {flag} is missing from the completion script"
             );
         }
-    }
-}
-
-/// The help text and the completions describe the same command; a flag in one
-/// and not the other is a contradiction a user meets as a surprise.
-#[test]
-fn the_help_text_and_the_flag_list_agree() {
-    let (_, help) = run(&["--help"]);
-    for (flag, _) in FLAGS {
-        assert!(help.contains(flag), "{flag} is not in --help:\n{help}");
     }
 }

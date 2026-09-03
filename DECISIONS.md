@@ -1069,20 +1069,36 @@ to the CI status. The 85% floor stays in the same step, so a drop fails the
 build before it reaches the badge. Codecov was the alternative and now needs
 a token for every upload.
 
-`--version`, `--help` and `--list-tools` are the only flags; everything else
-is the environment (D8). No clap: three string matches before the
-configuration is read, so they work on an unconfigured machine.
+The command line is clap, and that reverses an earlier decision. The first
+versions matched three strings by hand, on the argument that a parser is a
+heavy dependency for flags that take no values — the same reasoning that
+removed `EnvFilter` for ~130 KB (D41). What changed is what the flags do:
+once `--list-tools` grew an output format and `--completions` a shell
+argument, the hand-rolled version had to validate values, reject flags in
+the wrong combination, and keep three completion scripts and a help string
+in step with `main` by hand, with a test standing guard because nothing else
+would. Clap does all of that from one declaration: `--help` in a long and a
+short form, a suggestion for a misspelled flag, `[possible values: …]` in
+every error, `--format` refused without `--list-tools`, and completions for
+five shells generated from the same declarations as the help, so they cannot
+disagree. Measured cost on the `http` release build: 4 301 328 → 4 484 592
+bytes, +183 KB (+4.3%) — `clap_builder` 80 KB, `clap_complete` 24 KB, the
+rest generic instances and `anstyle`/`strsim`. That is the size of the thing
+D12 protects against, taken knowingly, for a surface people meet at the
+terminal before they have configured anything. It is still parsed before
+`Config::from_env`, so every flag works on an unconfigured machine.
 
-`--completions <bash|zsh|fish>` prints a completion script for those three
-flags. Written out by hand rather than generated: `clap_complete` would mean
-adopting clap, which this deliberately does not use, to describe four flags
-that take no values — thirty lines of shell say it directly. The binary being
-the source is what lets Homebrew install them with
+What clap does not do here is read configuration. Its `env` support would
+put `READ_ONLY` and the rest on flags with a second, partial copy of the
+reference next to them; the environment stays the one source (D8), the
+variables are listed in `--help`'s footer instead, and the flags cover only
+what happens before a configuration exists.
+
+`--completions <shell>` is what Homebrew installs through
 `generate_completions_from_executable`, so nothing in the tap or the release
 has to be kept in step. (The formula must `chmod 0755` the binary first: one
 downloaded from a release is not executable the way a compiled one is, and
-brew runs it to get the scripts.) A test asserts every flag appears in every
-script, since a flag missing from one is invisible rather than broken.
+brew runs it to get the scripts.)
 
 `--list-tools` exists because deciding whether to install this should not
 require producing an API token first. It reads the catalogue from the

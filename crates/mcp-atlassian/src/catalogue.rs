@@ -66,3 +66,28 @@ pub fn render() -> String {
     }
     out
 }
+
+/// The catalogue as JSON: an array of objects, one per tool, for scripts and
+/// other programs — the text form is for people.
+pub fn render_json() -> String {
+    let tools: Vec<serde_json::Value> = ["jira", "confluence"]
+        .into_iter()
+        .zip([
+            mcp_atlassian_jira::tools::router().list_all(),
+            mcp_atlassian_confluence::tools::router().list_all(),
+        ])
+        .flat_map(|(product, mut tools)| {
+            tools.sort_by(|a, b| a.name.cmp(&b.name));
+            tools.into_iter().map(move |tool| {
+                serde_json::json!({
+                    "name": tool.name,
+                    "product": product,
+                    "kind": kind(&tool),
+                    "title": tool.title,
+                    "description": tool.description,
+                })
+            })
+        })
+        .collect();
+    serde_json::to_string_pretty(&tools).expect("plain strings serialize")
+}
