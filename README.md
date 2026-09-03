@@ -125,9 +125,8 @@ same thing from source.
 ### Install
 
 Download the binary for your platform from
-[Releases](https://github.com/d3lph1/mcp-atlassian/releases): Linux
-x86_64/arm64 (static musl, runs on any distribution), macOS x86_64/arm64,
-Windows x86_64. Put it wherever you keep such things and make it executable.
+[Releases](https://github.com/d3lph1/mcp-atlassian/releases). Put it wherever
+you keep such things and make it executable.
 
 ### Configure
 
