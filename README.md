@@ -67,13 +67,6 @@ Point your MCP client at the installed binary. On Apple Silicon that is
 }
 ```
 
-To try it from a terminal instead, pass settings as flags:
-
-```bash
-mcp-atlassian serve --jira-url https://your-company.atlassian.net \
-                    --jira-username you@company.com --read-only
-```
-
 ## Docker
 
 ### Install
