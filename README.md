@@ -6,7 +6,7 @@
 
 An ultra-lightweight [MCP](https://modelcontextprotocol.io) server for
 **Jira** and **Confluence**, covering both Atlassian Cloud and Server/Data
-Center. Written in Rust.
+Center (self-hosted). Written in Rust.
 
 One static binary. Nothing to install alongside it: no runtime, no shell, no
 package manager in the image.
