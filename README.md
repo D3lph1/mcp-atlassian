@@ -93,12 +93,16 @@ be left out.
       "args": [
         "run", "--rm", "-i",
         "-e", "JIRA_URL", "-e", "JIRA_USERNAME", "-e", "JIRA_API_TOKEN",
+        "-e", "CONFLUENCE_URL", "-e", "CONFLUENCE_USERNAME", "-e", "CONFLUENCE_API_TOKEN",
         "ghcr.io/d3lph1/mcp-atlassian:latest"
       ],
       "env": {
         "JIRA_URL": "https://your-company.atlassian.net",
         "JIRA_USERNAME": "you@company.com",
-        "JIRA_API_TOKEN": "…"
+        "JIRA_API_TOKEN": "…",
+        "CONFLUENCE_URL": "https://your-company.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "you@company.com",
+        "CONFLUENCE_API_TOKEN": "…"
       }
     }
   }
@@ -140,7 +144,10 @@ Give your MCP client the absolute path to the binary:
       "env": {
         "JIRA_URL": "https://your-company.atlassian.net",
         "JIRA_USERNAME": "you@company.com",
-        "JIRA_API_TOKEN": "…"
+        "JIRA_API_TOKEN": "…",
+        "CONFLUENCE_URL": "https://your-company.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "you@company.com",
+        "CONFLUENCE_API_TOKEN": "…"
       }
     }
   }
