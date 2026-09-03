@@ -3,6 +3,7 @@
 [![CI](https://github.com/d3lph1/mcp-atlassian/actions/workflows/ci.yml/badge.svg)](https://github.com/d3lph1/mcp-atlassian/actions/workflows/ci.yml)
 [![Coverage](https://coveralls.io/repos/github/D3lph1/mcp-atlassian/badge.svg?branch=master)](https://coveralls.io/github/D3lph1/mcp-atlassian?branch=master)
 [![crates.io](https://img.shields.io/crates/v/mcp-atlassian.svg)](https://crates.io/crates/mcp-atlassian)
+[![License](https://img.shields.io/crates/l/mcp-atlassian.svg)](LICENSE)
 
 An ultra-lightweight [MCP](https://modelcontextprotocol.io) server for
 **Jira** and **Confluence**, covering both Atlassian Cloud and Server/Data
