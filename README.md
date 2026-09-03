@@ -27,8 +27,9 @@ mcp-atlassian tools --format json
 | **Homebrew** | macOS and Linux desktops; upgrades and shell completion come with it | [below](#homebrew) |
 | **Docker** | servers, containers, and keeping the host clean | [below](#docker) |
 | **Executable** | anything else, Windows included; no package manager needed | [below](#executable) |
+| **From source** | a Rust toolchain and a reason to build it yourself | [below](#build-from-source) |
 
-All three take the same configuration, described once in
+They all take the same configuration, described once in
 [Configuration](#configuration).
 
 ## Homebrew
@@ -132,20 +133,6 @@ Windows x86_64. Put it on your `PATH`:
 install -m 755 mcp-atlassian-aarch64-apple-darwin /usr/local/bin/mcp-atlassian
 ```
 
-On macOS a file downloaded through a browser is quarantined and will not run
-until the attribute is cleared:
-`xattr -d com.apple.quarantine /usr/local/bin/mcp-atlassian`. Downloading with
-`curl` avoids it.
-
-Or build from source, which needs a Rust toolchain:
-
-```bash
-cargo install mcp-atlassian --features http
-```
-
-The `http` feature adds the streamable HTTP transport. Leave it out for a
-smaller binary if stdio is all you need.
-
 ### Configure
 
 Give your MCP client the absolute path to the binary:
@@ -170,6 +157,17 @@ Shell completion is not installed for you here, so load it yourself:
 ```bash
 eval "$(mcp-atlassian completions zsh)"   # or bash, fish, elvish, powershell
 ```
+
+## Build from source
+
+Needs a Rust toolchain.
+
+```bash
+cargo install mcp-atlassian --features http
+```
+
+The `http` feature adds the streamable HTTP transport; leave it out for a
+smaller binary if stdio is all you need.
 
 ## Configuration
 
