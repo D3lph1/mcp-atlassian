@@ -1042,7 +1042,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "mcp-atlassian"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "axum",
@@ -1065,7 +1065,7 @@ dependencies = [
 
 [[package]]
 name = "mcp-atlassian-client"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "futures-util",
  "reqwest",
@@ -1083,7 +1083,7 @@ dependencies = [
 
 [[package]]
 name = "mcp-atlassian-confluence"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "mcp-atlassian-client",
  "mcp-atlassian-storage-markdown",
@@ -1097,7 +1097,7 @@ dependencies = [
 
 [[package]]
 name = "mcp-atlassian-jira"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "mcp-atlassian-client",
  "rmcp",
@@ -1111,7 +1111,7 @@ dependencies = [
 
 [[package]]
 name = "mcp-atlassian-storage-markdown"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "comrak",
  "htmd",
