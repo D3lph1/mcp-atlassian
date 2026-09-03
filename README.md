@@ -13,13 +13,6 @@ image of ~5 MB. 70 tools, prompts, resources, and the safety switches an
 operator actually wants: read-only mode, dry run, confirmation of destructive
 calls, an audit log, and a sandbox for attachments.
 
-See what you would be installing before configuring anything:
-
-```bash
-mcp-atlassian tools              # all 70, grouped, with what each one changes
-mcp-atlassian tools --format json
-```
-
 ## Pick a way to run it
 
 | | Good for | Section |
