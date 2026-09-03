@@ -133,12 +133,9 @@ same thing from source.
 Download the binary for your platform from
 [Releases](https://github.com/d3lph1/mcp-atlassian/releases): Linux
 x86_64/arm64 (static musl, runs on any distribution), macOS x86_64/arm64,
-Windows x86_64. Every release ships `SHA256SUMS`; verify before running:
+Windows x86_64. Put it on your `PATH`:
 
 ```bash
-sha256sum --check --ignore-missing SHA256SUMS       # Linux
-shasum -a 256 --check --ignore-missing SHA256SUMS   # macOS
-
 install -m 755 mcp-atlassian-aarch64-apple-darwin /usr/local/bin/mcp-atlassian
 ```
 
