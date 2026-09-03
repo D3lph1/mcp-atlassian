@@ -259,20 +259,68 @@ fn serve_help_names_the_variable_behind_each_flag() {
     }
 }
 
-/// Configuration is validated in one place, and it names settings by their
-/// variable. Now that each has a flag, a failure has to point at them —
-/// otherwise someone who typed `serve` never learns the flags exist.
+/// Configuration is validated in one place, which reports settings by their
+/// variable name. At a terminal those settings have flags, so a failure that
+/// stops a start-up has to name them, or someone who typed `serve` never
+/// learns the flags exist.
 #[test]
-fn a_configuration_failure_points_at_the_flags() {
+fn nothing_configured_names_every_way_to_configure_something() {
     let (ok, out) = run(&["serve"]);
     assert!(!ok, "{out}");
-    assert!(out.contains("serve --help"), "no hint about flags:\n{out}");
-    assert!(out.contains("JIRA_URL"), "{out}");
+    for expected in [
+        "--jira-url",
+        "--confluence-url",
+        "--oauth-client-id",
+        "--jira-personal-token-file",
+        "serve --help",
+    ] {
+        assert!(
+            out.contains(expected),
+            "`{expected}` is missing from:\n{out}"
+        );
+    }
+    // And why a token is not among them.
+    assert!(out.contains("ps"), "the reason tokens are env-only:\n{out}");
+}
 
-    // A partly configured service says what is missing, not just that
-    // something is.
+#[test]
+fn a_half_configured_service_names_what_would_complete_it() {
     let (ok, out) = run(&["serve", "--jira-url", "https://x.atlassian.net"]);
     assert!(!ok, "{out}");
-    assert!(out.contains("JIRA_PERSONAL_TOKEN"), "{out}");
-    assert!(out.contains("serve --help"), "{out}");
+    for expected in [
+        "--jira-username",
+        "--jira-api-token-file",
+        "--jira-personal-token-file",
+        "JIRA_PERSONAL_TOKEN",
+    ] {
+        assert!(
+            out.contains(expected),
+            "`{expected}` is missing from:\n{out}"
+        );
+    }
+
+    // Confluence gets its own spelling, not Jira's.
+    let (ok, out) = run(&["serve", "--confluence-url", "https://x.atlassian.net/wiki"]);
+    assert!(!ok, "{out}");
+    assert!(out.contains("--confluence-personal-token-file"), "{out}");
+    assert!(
+        !out.contains("--jira-"),
+        "Jira flags in a Confluence error:\n{out}"
+    );
+}
+
+/// Only those two are spelled out. Everything else already names the setting
+/// it is unhappy about, and a wall of guidance would bury it.
+#[test]
+fn other_configuration_errors_are_left_alone() {
+    let (ok, out) = run(&[
+        "serve",
+        "--jira-url",
+        "https://x.atlassian.net",
+        "--jira-personal-token-file",
+        "/nonexistent/token",
+    ]);
+    assert!(!ok, "{out}");
+    assert!(out.contains("JIRA_PERSONAL_TOKEN_FILE"), "{out}");
+    assert!(!out.contains("Configure at least one service"), "{out}");
 }

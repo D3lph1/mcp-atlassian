@@ -9,6 +9,25 @@ pub enum Error {
     #[error("configuration error: {0}")]
     Config(String),
 
+    /// Nothing at all is configured. Its own variant rather than a `Config`
+    /// string so a front end can say it in its own terms: the CLI names the
+    /// flags, a library caller sees the variables.
+    #[error(
+        "no service is configured: set JIRA_URL, CONFLUENCE_URL, \
+         or the four ATLASSIAN_OAUTH_* variables"
+    )]
+    NoService,
+
+    /// A service URL is set, but nothing usable to authenticate with.
+    #[error(
+        "{prefix}_URL is set but credentials are incomplete: \
+         set {prefix}_USERNAME + {prefix}_API_TOKEN (Cloud) \
+         or {prefix}_PERSONAL_TOKEN (Server/Data Center). \
+         Every token may instead be given as a path, via the matching \
+         *_FILE variable"
+    )]
+    IncompleteCredentials { prefix: String },
+
     #[error("invalid URL `{url}`: {message}")]
     InvalidUrl { url: String, message: String },
 

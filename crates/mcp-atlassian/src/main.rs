@@ -32,10 +32,16 @@ async fn main() -> anyhow::Result<()> {
     // parses and validates any of it (D8) — including which combinations make
     // a service. It reports settings by their variable name, so the hint says
     // where to find the flag that stands in for each one.
-    let config = Config::read(&serve.environment()).context(
-        "failed to load configuration; every setting below is also a flag — \
-         run `mcp-atlassian serve --help`",
-    )?;
+    // `Config::read` stays the one place that decides what a valid
+    // configuration is (D8); it reports settings by variable, and the CLI adds
+    // what those look like as flags.
+    let config = match Config::read(&serve.environment()) {
+        Ok(config) => config,
+        Err(error) => match mcp_atlassian::cli::guidance(&error) {
+            Some(guidance) => anyhow::bail!("{error}\n\n{guidance}"),
+            None => return Err(anyhow::Error::new(error).context("failed to load configuration")),
+        },
+    };
     // `Targets` reads the same `crate=level` directives as `EnvFilter` and
     // needs no regex, which was ~130 KB of the binary (D41).
     let filter: Targets = config

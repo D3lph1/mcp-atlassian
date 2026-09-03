@@ -239,7 +239,12 @@ pub fn to_mcp_error(err: crate::Error) -> McpError {
     };
     let data = status.map(|status| serde_json::json!({ "status": status }));
     let callers_fault = match &err {
-        Error::NotFound(_) | Error::InvalidUrl { .. } | Error::Config(_) | Error::File(_) => true,
+        Error::NotFound(_)
+        | Error::InvalidUrl { .. }
+        | Error::Config(_)
+        | Error::NoService
+        | Error::IncompleteCredentials { .. }
+        | Error::File(_) => true,
         Error::Api { status, .. } => {
             (400..500).contains(status) && !matches!(status, 401 | 403 | 429)
         }

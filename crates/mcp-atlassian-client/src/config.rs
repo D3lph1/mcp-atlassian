@@ -216,11 +216,7 @@ impl Config {
             )
         };
         if jira.is_none() && confluence.is_none() {
-            return Err(Error::Config(
-                "neither JIRA_URL nor CONFLUENCE_URL nor ATLASSIAN_OAUTH_* is set; \
-                 configure at least one service"
-                    .into(),
-            ));
+            return Err(Error::NoService);
         }
 
         Ok(Self {
@@ -480,13 +476,9 @@ impl ServiceConfig {
                 auth: Auth::Basic { username, token },
                 deployment,
             })),
-            _ => Err(Error::Config(format!(
-                "{prefix}_URL is set but credentials are incomplete: \
-                 set {prefix}_USERNAME + {prefix}_API_TOKEN (Cloud) \
-                 or {prefix}_PERSONAL_TOKEN (Server/Data Center). \
-                 Every token may instead be given as a path, via the matching \
-                 *_FILE variable"
-            ))),
+            _ => Err(Error::IncompleteCredentials {
+                prefix: prefix.to_string(),
+            }),
         }
     }
 }

@@ -70,9 +70,14 @@ everything in `env`, because clap is not reading the environment here. Giving
 it `env` for those three would fix that and cost more: `Config::read` would
 keep validating the rest — that a URL has credentials, that OAuth has all
 four, that a token is not given both inline and as a file — so two places
-would answer "is this configured", and they would drift. Instead the failure
-carries a hint naming `serve --help`, since the messages report settings by
-their variable and the flag for each is one line away.
+would answer "is this configured", and they would drift. Instead the two failures that stop a
+start-up are typed — `Error::NoService` and `Error::IncompleteCredentials` —
+and the binary, which is the part that knows about flags, prints what to do
+in flags: which three ways there are to configure a service, or which two
+credentials would complete the one already half-set. The library keeps saying
+it in variables, because that is what a library caller has. Everything else
+is left alone; a wall of guidance under every message would bury the one line
+that names the setting.
 
 No secret is a flag. Arguments are visible to every process on the machine
 through `ps` and are kept in shell history, so `JIRA_API_TOKEN` and the rest

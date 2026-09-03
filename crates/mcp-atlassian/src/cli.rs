@@ -321,3 +321,49 @@ impl mcp_atlassian_client::Env for Overrides {
             .or_else(|| std::env::var(name).ok())
     }
 }
+
+/// What to do about a configuration that will not start, said in flags.
+///
+/// `Config::read` reports settings by their variable name, which is right for
+/// a library and unhelpful at a terminal where the same settings have flags.
+/// Only the two failures that stop a start-up are worth spelling out; anything
+/// else already names what it is unhappy about.
+pub fn guidance(error: &mcp_atlassian_client::Error) -> Option<String> {
+    use mcp_atlassian_client::Error;
+    match error {
+        Error::NoService => Some(
+            "Configure at least one service:
+
+  Jira        --jira-url <URL>
+              with --jira-username <EMAIL> and JIRA_API_TOKEN
+              or --jira-personal-token-file <PATH>
+
+  Confluence  --confluence-url <URL>
+              with the same credentials, spelled --confluence-*
+
+  OAuth 2.0   --oauth-client-id <ID> --oauth-cloud-id <ID>
+              --oauth-client-secret-file <PATH> --oauth-refresh-token-file <PATH>
+              all four together; configures both services
+
+Tokens are not flags: an argument is visible in `ps` and kept in shell
+history. Pass them in the environment, or as a file with a *-token-file flag.
+Every flag has a variable; `mcp-atlassian serve --help` lists them."
+                .to_string(),
+        ),
+        Error::IncompleteCredentials { prefix } => {
+            let flag = prefix.to_lowercase();
+            Some(format!(
+                "Add credentials for {prefix}, either:
+
+  Cloud                --{flag}-username <EMAIL>
+                       with {prefix}_API_TOKEN or --{flag}-api-token-file <PATH>
+
+  Server/Data Center   {prefix}_PERSONAL_TOKEN
+                       or --{flag}-personal-token-file <PATH>
+
+Tokens are not flags, only the file they are read from."
+            ))
+        }
+        _ => None,
+    }
+}
