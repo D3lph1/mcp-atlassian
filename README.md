@@ -168,9 +168,7 @@ smaller binary if stdio is all you need.
 
 ## Configuration
 
-Variable names follow the ones other Atlassian MCP servers use, so an existing
-client configuration carries over unchanged. Either product is optional: tools
-register only for what is configured.
+Either product is optional: tools register only for what is configured.
 
 **Authentication.** Cloud uses an email and an API token
 (`JIRA_USERNAME` + `JIRA_API_TOKEN`). Server and Data Center use a personal
