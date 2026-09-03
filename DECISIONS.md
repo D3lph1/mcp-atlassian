@@ -1192,9 +1192,13 @@ tagged with.
 70 tools (40 Jira, 30 Confluence), four prompts, four resource templates,
 `issue_key` completion. 245 tests against wiremock and an in-memory MCP
 transport, 90.4% line coverage gated at 85, clippy and cargo-deny clean.
-Release binary on aarch64-apple-darwin: 3.85 MB stdio, 4.22 MB with `http`;
-from CI, 4.83 MB for aarch64 musl and 6.41 MB for x86_64 musl (the spread is
-explained in D12). Idle RSS ~2 MB against a 30 MB target.
+Release binaries at 0.2.0, measured from the release assets: 4.25 MB
+aarch64-apple-darwin, 5.04 MB aarch64 musl, 5.38 MB x86_64-apple-darwin and
+Windows, 6.70 MB x86_64 musl (the spread is explained in D12). The scratch
+image is the binary plus metadata: 5.04 MB on arm64, 6.70 MB on amd64.
+Serving both products in a container, RSS is 2.5 MB against a 30 MB target;
+the same build on macOS reports 6.4 MB, which is that platform's accounting
+rather than a different footprint.
 `cargo bloat --crates` on the unstripped http build: std 419 KB,
 `mcp_atlassian` 292 KB, rmcp 244 KB, rustls 175 KB. The 292 KB are mostly
 the projected routers (D21) — one boxed closure per tool per wrapper — and

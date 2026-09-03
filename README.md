@@ -4,14 +4,18 @@
 [![Coverage](https://coveralls.io/repos/github/d3lph1/mcp-atlassian/badge.svg?branch=master)](https://coveralls.io/github/d3lph1/mcp-atlassian?branch=master)
 [![crates.io](https://img.shields.io/crates/v/mcp-atlassian.svg)](https://crates.io/crates/mcp-atlassian)
 
-A small, fast [MCP](https://modelcontextprotocol.io) server for **Jira** and
-**Confluence**, covering both Atlassian Cloud and Server/Data Center. Written
-in Rust.
+An ultra-lightweight [MCP](https://modelcontextprotocol.io) server for
+**Jira** and **Confluence**, covering both Atlassian Cloud and Server/Data
+Center. Written in Rust.
 
-One static binary of about 4 MB, ~2 MB of RSS at idle, a `FROM scratch` Docker
-image of ~5 MB. 70 tools, prompts, resources, and the safety switches an
-operator actually wants: read-only mode, dry run, confirmation of destructive
-calls, an audit log, and a sandbox for attachments.
+One static binary of 4 to 7 MB depending on the platform, holding about
+2.5 MB of memory while serving, in a `FROM scratch` Docker image of 5 MB on
+arm64 and 6.7 MB on amd64. Nothing to install alongside it: no runtime, no
+shell, no package manager in the image.
+
+70 tools, prompts, resources, and the safety switches an operator actually
+wants: read-only mode, dry run, confirmation of destructive calls, an audit
+log, and a sandbox for attachments.
 
 ## Pick a way to run it
 
