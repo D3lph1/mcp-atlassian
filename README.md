@@ -8,10 +8,8 @@ An ultra-lightweight [MCP](https://modelcontextprotocol.io) server for
 **Jira** and **Confluence**, covering both Atlassian Cloud and Server/Data
 Center. Written in Rust.
 
-One static binary of 4 to 7 MB depending on the platform, holding about
-2.5 MB of memory while serving, in a `FROM scratch` Docker image of 5 MB on
-arm64 and 6.7 MB on amd64. Nothing to install alongside it: no runtime, no
-shell, no package manager in the image.
+One static binary. Nothing to install alongside it: no runtime, no shell, no
+package manager in the image.
 
 70 tools, prompts, resources, and the safety switches an operator actually
 wants: read-only mode, dry run, confirmation of destructive calls, an audit
