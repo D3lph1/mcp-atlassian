@@ -1073,6 +1073,17 @@ a token for every upload.
 is the environment (D8). No clap: three string matches before the
 configuration is read, so they work on an unconfigured machine.
 
+`--completions <bash|zsh|fish>` prints a completion script for those three
+flags. Written out by hand rather than generated: `clap_complete` would mean
+adopting clap, which this deliberately does not use, to describe four flags
+that take no values — thirty lines of shell say it directly. The binary being
+the source is what lets Homebrew install them with
+`generate_completions_from_executable`, so nothing in the tap or the release
+has to be kept in step. (The formula must `chmod 0755` the binary first: one
+downloaded from a release is not executable the way a compiled one is, and
+brew runs it to get the scripts.) A test asserts every flag appears in every
+script, since a flag missing from one is invisible rather than broken.
+
 `--list-tools` exists because deciding whether to install this should not
 require producing an API token first. It reads the catalogue from the
 routers' own metadata, which exists before any client does, and prints every

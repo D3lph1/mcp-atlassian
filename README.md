@@ -69,6 +69,9 @@ The switches worth knowing:
 
 The full list is in [AGENTS.md](AGENTS.md).
 
+Shell completion comes from the binary itself — Homebrew installs it, and
+otherwise `eval "$(mcp-atlassian --completions zsh)"` (or `bash`, `fish`).
+
 `mcp-atlassian --list-tools` prints the whole catalogue — 70 tools with what
 each one changes — and needs no configuration, so you can see what you would
 be installing before setting up a token.
