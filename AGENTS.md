@@ -41,6 +41,11 @@ cargo test -p mcp-atlassian-jira   # test a single crate
 mcp-atlassian tools            # also --format json; `completions <shell>`; clap subcommands (D45)
 ```
 
+The minimum supported Rust version is **1.88**, declared as
+`rust-version` in the root manifest and inherited by all five crates. An
+`msrv` CI job builds on exactly that toolchain, so raising it is a decision
+rather than an accident.
+
 CI (`.github/workflows/ci.yml`): fmt + clippy + test, coverage to Coveralls
 with an 85% floor, cargo-deny, binaries for Linux musl x86_64/aarch64, macOS
 x86_64/aarch64 and Windows x86_64, docker; a `v*` tag publishes a release

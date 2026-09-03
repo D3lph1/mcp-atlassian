@@ -157,7 +157,7 @@ eval "$(mcp-atlassian completions zsh)"   # or bash, fish, elvish, powershell
 
 ## Build from source
 
-Needs a Rust toolchain.
+Needs a Rust toolchain, 1.88 or newer.
 
 ```bash
 cargo install mcp-atlassian --features http

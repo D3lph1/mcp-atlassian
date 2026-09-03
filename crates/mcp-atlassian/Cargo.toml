@@ -3,6 +3,7 @@ name = "mcp-atlassian"
 description = "Lightweight MCP server for Jira and Confluence"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords = ["mcp", "jira", "confluence", "atlassian", "llm"]

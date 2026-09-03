@@ -3,6 +3,7 @@ name = "mcp-atlassian-jira"
 description = "Jira REST API v2 client (Cloud and Server/Data Center)"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords = ["jira", "atlassian", "mcp", "rest", "api"]

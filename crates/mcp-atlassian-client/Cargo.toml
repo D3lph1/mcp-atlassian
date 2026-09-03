@@ -3,6 +3,7 @@ name = "mcp-atlassian-client"
 description = "Shared HTTP client, auth and configuration for Atlassian REST APIs"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords = ["atlassian", "jira", "confluence", "rest", "client"]

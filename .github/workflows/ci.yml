@@ -68,6 +68,20 @@ jobs:
           file: lcov.info
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+  # The oldest toolchain the manifests claim to support. Pinned rather than
+  # derived: when a dependency raises its own floor this fails, which is the
+  # moment to decide whether to follow it or hold the version back.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.88
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+      - name: Build on the minimum supported Rust version
+        run: cargo check --workspace --all-features --locked --all-targets
+
   # Advisories and licenses over the whole tree; the policy is deny.toml.
   deny:
     runs-on: ubuntu-latest

@@ -11,6 +11,8 @@ members = [
 [workspace.package]
 version = "0.2.0"
 edition = "2021"
+# The floor the dependency tree already sets; a CI job holds it there.
+rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/d3lph1/mcp-atlassian"
 

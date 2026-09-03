@@ -3,6 +3,7 @@ name = "mcp-atlassian-storage-markdown"
 description = "Confluence storage format (XHTML) <-> Markdown conversion"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords = ["confluence", "markdown", "xhtml", "storage", "atlassian"]
