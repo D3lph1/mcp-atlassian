@@ -14,6 +14,15 @@
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 
+/// The footer of `--help`. A leading `\` keeps the literal from starting with
+/// a newline; the line breaks after that are real, so what is written here is
+/// what is printed.
+const AFTER_HELP: &str = "\
+Every setting has a flag on `serve` and an environment variable; run
+`mcp-atlassian serve --help` for the list. Secrets are environment-only.
+
+Full reference: https://github.com/d3lph1/mcp-atlassian";
+
 #[derive(Parser, Debug)]
 #[command(
     name = "mcp-atlassian",
@@ -23,9 +32,7 @@ use clap_complete::Shell;
         With no command this starts the server, speaking MCP on stdin/stdout \
         (TRANSPORT=streamable-http serves HTTP instead). That is what an MCP \
         client's configuration runs.",
-    after_help = "Every setting has a flag on `serve` and an environment variable; \
-run `mcp-atlassian serve --help` for the list. Secrets are environment-only.\n\n\
-Full reference: https://github.com/d3lph1/mcp-atlassian"
+    after_help = AFTER_HELP
 )]
 pub struct Cli {
     #[command(subcommand)]
