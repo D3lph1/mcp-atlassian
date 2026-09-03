@@ -127,11 +127,7 @@ same thing from source.
 Download the binary for your platform from
 [Releases](https://github.com/d3lph1/mcp-atlassian/releases): Linux
 x86_64/arm64 (static musl, runs on any distribution), macOS x86_64/arm64,
-Windows x86_64. Put it on your `PATH`:
-
-```bash
-install -m 755 mcp-atlassian-aarch64-apple-darwin /usr/local/bin/mcp-atlassian
-```
+Windows x86_64. Put it wherever you keep such things and make it executable.
 
 ### Configure
 
@@ -141,7 +137,7 @@ Give your MCP client the absolute path to the binary:
 {
   "mcpServers": {
     "atlassian": {
-      "command": "/usr/local/bin/mcp-atlassian",
+      "command": "/path/to/mcp-atlassian",
       "env": {
         "JIRA_URL": "https://your-company.atlassian.net",
         "JIRA_USERNAME": "you@company.com",
