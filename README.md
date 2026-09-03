@@ -1,7 +1,7 @@
 # mcp-atlassian
 
 [![CI](https://github.com/d3lph1/mcp-atlassian/actions/workflows/ci.yml/badge.svg)](https://github.com/d3lph1/mcp-atlassian/actions/workflows/ci.yml)
-[![Coverage](https://coveralls.io/repos/github/d3lph1/mcp-atlassian/badge.svg?branch=master)](https://coveralls.io/github/d3lph1/mcp-atlassian?branch=master)
+[![Coverage](https://coveralls.io/repos/github/D3lph1/mcp-atlassian/badge.svg?branch=master)](https://coveralls.io/github/D3lph1/mcp-atlassian?branch=master)
 [![crates.io](https://img.shields.io/crates/v/mcp-atlassian.svg)](https://crates.io/crates/mcp-atlassian)
 
 An ultra-lightweight [MCP](https://modelcontextprotocol.io) server for
