@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 # The floor the dependency tree already sets; a CI job holds it there.
 rust-version = "1.88"
@@ -17,10 +17,10 @@ license = "MIT"
 repository = "https://github.com/d3lph1/mcp-atlassian"
 
 [workspace.dependencies]
-mcp-atlassian-client = { path = "crates/mcp-atlassian-client", version = "0.2.0" }
-mcp-atlassian-jira = { path = "crates/mcp-atlassian-jira", version = "0.2.0" }
-mcp-atlassian-confluence = { path = "crates/mcp-atlassian-confluence", version = "0.2.0" }
-mcp-atlassian-storage-markdown = { path = "crates/mcp-atlassian-storage-markdown", version = "0.2.0" }
+mcp-atlassian-client = { path = "crates/mcp-atlassian-client", version = "0.3.0" }
+mcp-atlassian-jira = { path = "crates/mcp-atlassian-jira", version = "0.3.0" }
+mcp-atlassian-confluence = { path = "crates/mcp-atlassian-confluence", version = "0.3.0" }
+mcp-atlassian-storage-markdown = { path = "crates/mcp-atlassian-storage-markdown", version = "0.3.0" }
 
 anyhow = "1"
 thiserror = "2"
