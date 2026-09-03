@@ -231,17 +231,6 @@ The complete list of variables is in [AGENTS.md](AGENTS.md).
   and ends with a bounded ask.
 - **Completion** of issue keys in prompts and resource templates.
 
-## Design
-
-Deployment is inferred from the auth mode (API token means Cloud, PAT means
-Server/DC) and can be overridden. Jira uses REST v2 everywhere, so one code
-path serves both. Endpoint paths are guarded against interpolated identifiers,
-page sizes are capped, retries are bounded and only for what is safe to replay,
-and every setting is read and validated in one place.
-
-The reasons behind these and forty other decisions, and what is deliberately
-not done, are in [DECISIONS.md](DECISIONS.md).
-
 ## Develop
 
 ```bash
@@ -252,6 +241,9 @@ cargo build --release --features http
 
 Tests never touch a real Atlassian instance; they run against wiremock and an
 in-memory MCP transport.
+
+The reasons behind the design decisions, and what is deliberately not done,
+are in [DECISIONS.md](DECISIONS.md).
 
 ## License and trademarks
 
