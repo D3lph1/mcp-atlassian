@@ -102,7 +102,7 @@ optional — tools register only for configured services.
 | `CACHE_TTL` | seconds to cache reference data (projects, issue types, boards, spaces, fields); unset or `0` = no caching (D25) |
 | `NO_BANNER` | `true` → print the structured startup line instead of the banner (D29) |
 | `NO_COLOR` | any value → no ANSI colour in the banner (colour is also off when stderr is not a terminal) |
-| `RUST_LOG` | `tracing` directives, `info` by default (`debug`, `mcp_atlassian_client=debug,info`); no regex forms |
+| `LOG_FILTER` | `tracing` directives, `info` by default (`debug`, `mcp_atlassian_client=debug,info`); no regex forms. Not `RUST_LOG` (D8) |
 | `TRANSPORT` | `stdio` (default) or `streamable-http` (needs `--features http`) |
 | `HOST` / `PORT` / `ALLOWED_HOSTS` | HTTP transport bind address (127.0.0.1:8000) and extra Host-header allowlist (D18) |
 | `MCP_BEARER_TOKEN` (or `_FILE`) | HTTP transport: every `/mcp` request must carry this bearer token; `/healthz` is exempt (D39) |

@@ -46,6 +46,20 @@ binary for people who never use it.
 These names are what existing Atlassian MCP servers use, so switching to this
 server is a change of the launch command, not of the client configuration.
 
+The log filter is `LOG_FILTER`, not `RUST_LOG`, and not `LOG_LEVEL`. Every
+other variable here is addressed to an operator and says nothing about the
+implementation — `READ_ONLY`, `DRY_RUN`, `CACHE_TTL`, `TRANSPORT` — while
+`RUST_LOG` announced the language to someone editing a JSON config for a
+desktop client, who has no reason to care. `LOG_LEVEL` was the obvious
+alternative and is wrong: the value is not a level but a set of per-target
+directives (`debug`, `mcp_atlassian_client=debug,info`), and a name that
+promises one word while accepting an expression misleads worse than a name
+that leaks a language. `RUST_LOG` is not read at all, not even as a fallback:
+one variable, one name (the same reasoning as below), and a test asserts it
+has no effect so it cannot creep back. The cost is real — muscle memory for
+`-e RUST_LOG=debug` is universal in Rust tooling — and it was accepted
+because the audience here is Atlassian operators, not Rust developers.
+
 One deliberate divergence: the switch other servers spell `READ_ONLY_MODE` is
 `READ_ONLY` here, so the three behaviour switches read as a set — `READ_ONLY`,
 `DRY_RUN` (D26), `CACHE_TTL` (D25) — instead of one of them carrying a `_MODE`
@@ -955,7 +969,7 @@ on v1 untouched. Not done ahead of time: a `match` whose two arms are the
 same is noise, and the v2 shapes are not settled.
 
 Two smaller things landed in the same phase because the measurement in
-phase 7 asked for them: `RUST_LOG` is read through `Config` like every other
+phase 7 asked for them: the log filter is read through `Config` like every other
 variable and parsed with `tracing_subscriber::filter::Targets`, which takes
 the same `crate=level` directives as `EnvFilter` without the regex crates
 behind it; and the route filtering in `AtlassianServer::new` is one pass over

@@ -137,7 +137,9 @@ pub struct Config {
     pub max_attachment_bytes: u64,
     /// Per-request timeout against Atlassian.
     pub request_timeout: Duration,
-    /// `RUST_LOG`: `tracing` target directives (`info`, `mcp_atlassian_client=debug`).
+    /// `LOG_FILTER`: `tracing` target directives (`info`,
+    /// `mcp_atlassian_client=debug`). Not `RUST_LOG`, and not `LOG_LEVEL` —
+    /// see D8.
     pub log_filter: String,
 }
 
@@ -249,7 +251,7 @@ impl Config {
                 DEFAULT_REQUEST_TIMEOUT,
             )?,
             log_filter: env
-                .get("RUST_LOG")
+                .get("LOG_FILTER")
                 .map(|raw| raw.trim().to_string())
                 .filter(|raw| !raw.is_empty())
                 .unwrap_or_else(|| "info".into()),
@@ -798,10 +800,24 @@ mod tests {
         let base = [("JIRA_URL", "https://x"), ("JIRA_PERSONAL_TOKEN", "p")];
         assert_eq!(read(&base).unwrap().log_filter, "info");
         assert_eq!(
-            read(&[base[0], base[1], ("RUST_LOG", " debug,hyper=warn ")])
+            read(&[base[0], base[1], ("LOG_FILTER", " debug,hyper=warn ")])
                 .unwrap()
                 .log_filter,
             "debug,hyper=warn"
+        );
+    }
+
+    /// `RUST_LOG` is not a fallback and must not become one: the filter has
+    /// exactly one name (D8).
+    #[test]
+    fn rust_log_is_not_read() {
+        let base = [("JIRA_URL", "https://x"), ("JIRA_PERSONAL_TOKEN", "p")];
+        assert_eq!(
+            read(&[base[0], base[1], ("RUST_LOG", "trace")])
+                .unwrap()
+                .log_filter,
+            "info",
+            "RUST_LOG must not affect the filter"
         );
     }
 

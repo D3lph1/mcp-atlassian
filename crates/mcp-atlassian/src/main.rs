@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
     let filter: Targets = config
         .log_filter
         .parse()
-        .with_context(|| format!("RUST_LOG `{}` is not a valid filter", config.log_filter))?;
+        .with_context(|| format!("LOG_FILTER `{}` is not a valid filter", config.log_filter))?;
     // stdout carries the MCP protocol in stdio mode — all logging goes to stderr.
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))

@@ -35,7 +35,7 @@ Configuration is read from the environment, never from flags:
   CACHE_TTL                 seconds to cache reference data (off by default)
   TRANSPORT                 stdio (default) or streamable-http
   HOST, PORT, MCP_BEARER_TOKEN    HTTP transport bind address and auth
-  RUST_LOG                  tracing directives (info by default)
+  LOG_FILTER                tracing directives (info by default)
   NO_BANNER, NO_COLOR       startup output
 
 Full reference: https://github.com/d3lph1/mcp-atlassian";
