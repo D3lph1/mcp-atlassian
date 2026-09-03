@@ -169,6 +169,63 @@ smaller binary if stdio is all you need.
 
 ## Configuration
 
+The JSON in the sections above is the Claude Desktop format, which Claude Code
+and Cursor read too. Other clients spell the same thing differently:
+
+<details>
+<summary><b>Zed</b> — <code>settings.json</code>, key <code>context_servers</code></summary>
+
+```json
+{
+  "context_servers": {
+    "atlassian": {
+      "command": "/opt/homebrew/bin/mcp-atlassian",
+      "args": [],
+      "env": {
+        "JIRA_URL": "https://your-company.atlassian.net",
+        "JIRA_USERNAME": "you@company.com",
+        "JIRA_API_TOKEN": "…",
+        "CONFLUENCE_URL": "https://your-company.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "you@company.com",
+        "CONFLUENCE_API_TOKEN": "…"
+      }
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><b>opencode</b> — <code>opencode.json</code>, key <code>mcp</code></summary>
+
+The command is one array, and the variables go in `environment` rather than
+`env`. `timeout` defaults to 5000 ms, which is ample for the binary but not for
+a `docker run` that still has to pull the image.
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "atlassian": {
+      "type": "local",
+      "command": ["/opt/homebrew/bin/mcp-atlassian"],
+      "enabled": true,
+      "environment": {
+        "JIRA_URL": "https://your-company.atlassian.net",
+        "JIRA_USERNAME": "you@company.com",
+        "JIRA_API_TOKEN": "…",
+        "CONFLUENCE_URL": "https://your-company.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "you@company.com",
+        "CONFLUENCE_API_TOKEN": "…"
+      }
+    }
+  }
+}
+```
+
+</details>
+
 Either product is optional: tools register only for what is configured.
 
 **Authentication.** Cloud uses an email and an API token
