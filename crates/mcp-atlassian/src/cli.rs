@@ -2,12 +2,16 @@
 //!
 //! Configuration stays in the environment (D8): MCP clients launch the server
 //! from a JSON config that carries settings as `env`, so flags would be a
-//! second way to say the same thing. What the flags cover is everything a
-//! person does *before* configuring — check the version, read the help, see
-//! the tool catalogue, install completions — and all of it runs before
-//! `Config::from_env` is called, so it works on a machine with no token.
+//! second way to say the same thing. The command line therefore only names
+//! *what to do* — serve, list the tools, print a completion script — and all
+//! of it is parsed before `Config::from_env` is called, so every command
+//! except `serve` works on a machine with no token.
+//!
+//! Actions are subcommands, not flags: a flag modifies a run, a subcommand
+//! replaces it, and `tools --format json` scopes the option to the one
+//! command it belongs to instead of guarding it with `requires`.
 
-use clap::{CommandFactory, Parser, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 
 /// The environment variables, listed in `--help` so the one document a user
@@ -42,40 +46,49 @@ Full reference: https://github.com/d3lph1/mcp-atlassian";
     version,
     about = "MCP server for Jira and Confluence — Cloud and Server/Data Center",
     long_about = "MCP server for Jira and Confluence — Cloud and Server/Data Center.\n\n\
-        Speaks MCP on stdin/stdout by default; TRANSPORT=streamable-http serves \
-        HTTP instead. Run with no arguments to start the server.",
-    after_help = AFTER_HELP,
-    // The env vars in after_help are the reference; clap's own `[env: ...]`
-    // annotations would put a second, partial copy next to the flags.
-    disable_help_subcommand = true,
-    arg_required_else_help = false
+        With no command this starts the server, speaking MCP on stdin/stdout \
+        (TRANSPORT=streamable-http serves HTTP instead). That is what an MCP \
+        client's configuration runs.",
+    after_help = AFTER_HELP
 )]
 pub struct Cli {
-    /// Print every tool this build offers and exit.
+    #[command(subcommand)]
+    pub command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Start the MCP server (the default when no command is given).
+    Serve,
+
+    /// Print every tool this build offers.
     ///
     /// Needs no configuration and ignores READ_ONLY, ENABLED_TOOLS and
     /// DISABLED_TOOLS: this is what the build has, not what a configuration
-    /// would register.
-    #[arg(long, short = 'l')]
-    pub list_tools: bool,
+    /// would register — the startup log reports that.
+    Tools {
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = Format::Text)]
+        format: Format,
+    },
 
-    /// Output format for --list-tools.
-    #[arg(long, value_enum, default_value_t = Format::Text, requires = "list_tools")]
-    pub format: Format,
-
-    /// Print a shell completion script and exit.
+    /// Print a shell completion script.
     ///
-    /// Load it with, for example, `eval "$(mcp-atlassian --completions zsh)"`,
-    /// or write it where your shell looks for completions.
-    #[arg(long, value_name = "SHELL", value_enum, conflicts_with = "list_tools")]
-    pub completions: Option<Shell>,
+    /// Load it with, for example, `eval "$(mcp-atlassian completions zsh)"`,
+    /// or write it where your shell looks for completions. Homebrew installs
+    /// it for you.
+    Completions {
+        /// The shell to generate for.
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
     /// Grouped by product, one line per tool.
     Text,
-    /// One object per tool: name, kind, title, description.
+    /// One object per tool: name, product, kind, title, description.
     Json,
 }
 

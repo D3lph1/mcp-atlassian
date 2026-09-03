@@ -37,12 +37,12 @@ class McpAtlassian < Formula
     chmod 0755, bin/"mcp-atlassian"
     # The binary prints its own completion scripts, so there is nothing to
     # keep in step between the release and the formula.
-    generate_completions_from_executable(bin/"mcp-atlassian", "--completions")
+    generate_completions_from_executable(bin/"mcp-atlassian", "completions")
   end
 
   test do
     assert_match "mcp-atlassian #{version}", shell_output("#{bin}/mcp-atlassian --version")
-    assert_match "complete", shell_output("#{bin}/mcp-atlassian --completions bash")
+    assert_match "complete", shell_output("#{bin}/mcp-atlassian completions bash")
     # Refuses to start unconfigured, and says which variables it wants.
     output = shell_output("#{bin}/mcp-atlassian 2>&1", 1)
     assert_match "JIRA_URL", output

@@ -1,4 +1,4 @@
-//! `--list-tools` prints the whole surface, and prints it truthfully.
+//! `tools` prints the whole surface, and prints it truthfully.
 //!
 //! Enumerated over the routers rather than written out tool by tool (D32):
 //! adding a tool must not require editing this file, but must not be able to

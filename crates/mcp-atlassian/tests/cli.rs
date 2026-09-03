@@ -1,10 +1,10 @@
-//! The flags, exercised through the built binary.
+//! The command line, exercised through the built binary.
 //!
-//! `--version`, `--help`, `--list-tools` and `--completions` all have to work
-//! before any configuration exists — that is most of their point — so these
-//! run the executable with an empty environment rather than calling the
-//! library functions behind them. Calling the functions would pass even if
-//! `main` never wired the flag up.
+//! `--version`, `--help`, `tools` and `completions` all have to work before
+//! any configuration exists — that is most of their point — so these run the
+//! executable with an empty environment rather than calling the library
+//! functions behind them. Calling the functions would pass even if `main`
+//! never wired the command up.
 
 use std::process::Command;
 
@@ -25,26 +25,46 @@ fn run(args: &[&str]) -> (bool, String) {
 }
 
 #[test]
-fn the_flags_work_without_any_configuration() {
+fn the_commands_work_without_any_configuration() {
     let (ok, out) = run(&["--version"]);
     assert!(ok, "{out}");
     assert!(out.contains(env!("CARGO_PKG_VERSION")), "{out}");
 
     let (ok, out) = run(&["--help"]);
     assert!(ok, "{out}");
-    assert!(out.contains("--list-tools"), "{out}");
-    assert!(out.contains("--completions"), "{out}");
+    for command in ["serve", "tools", "completions"] {
+        assert!(out.contains(command), "{command} is not in --help:\n{out}");
+    }
     // The help is where a user looks for configuration; it must name it.
     assert!(out.contains("JIRA_URL"), "{out}");
 
-    let (ok, out) = run(&["--list-tools"]);
+    let (ok, out) = run(&["tools"]);
     assert!(ok, "{out}");
     assert!(out.contains("jira_get_issue"), "{out}");
+
+    // Each command has its own help, with its own options.
+    let (ok, out) = run(&["tools", "--help"]);
+    assert!(ok, "{out}");
+    assert!(out.contains("--format"), "{out}");
+}
+
+/// No command means `serve`, so an MCP client's configuration — which runs
+/// the bare binary — keeps working. Unconfigured, both forms fail the same
+/// way: by naming the variables they wanted.
+#[test]
+fn no_command_and_serve_are_the_same_thing() {
+    let (ok, bare) = run(&[]);
+    assert!(!ok, "unconfigured, it should refuse to start: {bare}");
+    assert!(bare.contains("JIRA_URL"), "{bare}");
+
+    let (ok, serve) = run(&["serve"]);
+    assert!(!ok, "{serve}");
+    assert!(serve.contains("JIRA_URL"), "{serve}");
 }
 
 #[test]
 fn the_catalogue_has_a_machine_readable_form() {
-    let (ok, out) = run(&["--list-tools", "--format", "json"]);
+    let (ok, out) = run(&["tools", "--format", "json"]);
     assert!(ok, "{out}");
     let tools: Vec<serde_json::Value> = serde_json::from_str(&out).expect("valid JSON");
     assert_eq!(tools.len(), 70, "{out}");
@@ -55,17 +75,16 @@ fn the_catalogue_has_a_machine_readable_form() {
     assert_eq!(get_issue["kind"], "read-only");
     assert_eq!(get_issue["product"], "jira");
 
-    // --format without --list-tools is a mistake, and clap says so.
+    // --format belongs to `tools`; at the top level it is unknown.
     let (ok, out) = run(&["--format", "json"]);
     assert!(!ok, "{out}");
-    assert!(out.contains("--list-tools"), "{out}");
 }
 
 #[test]
 fn every_shell_gets_a_script_and_anything_else_gets_an_error() {
     for shell in Shell::value_variants() {
         let name = shell.to_string();
-        let (ok, out) = run(&["--completions", &name]);
+        let (ok, out) = run(&["completions", &name]);
         assert!(ok, "{name}: {out}");
         assert!(
             out.contains("mcp-atlassian"),
@@ -74,46 +93,52 @@ fn every_shell_gets_a_script_and_anything_else_gets_an_error() {
     }
 
     // Naming the shells is the difference between a usable error and a wall.
-    let (ok, out) = run(&["--completions", "tcsh"]);
+    let (ok, out) = run(&["completions", "tcsh"]);
     assert!(!ok, "an unknown shell should fail: {out}");
     assert!(
         out.contains("zsh"),
         "the error should list the shells: {out}"
     );
 
-    let (ok, _) = run(&["--completions"]);
+    let (ok, _) = run(&["completions"]);
     assert!(!ok, "a missing shell argument should fail");
 }
 
 /// A typo gets a suggestion rather than a bare rejection.
 #[test]
-fn a_misspelled_flag_is_corrected() {
-    let (ok, out) = run(&["--lst-tools"]);
+fn a_misspelled_command_is_corrected() {
+    let (ok, out) = run(&["tool"]);
     assert!(!ok, "{out}");
-    assert!(out.contains("--list-tools"), "{out}");
+    assert!(out.contains("tools"), "{out}");
 }
 
 /// Completions are generated from the same declarations as the help, so every
-/// long flag the parser knows must appear in every script.
+/// subcommand and every long option the parser knows must appear in every
+/// script — one missing is invisible rather than broken.
 #[test]
-fn every_flag_appears_in_every_script() {
+fn every_command_and_option_appears_in_every_script() {
     let command = Cli::command();
-    let flags: Vec<String> = command
-        .get_arguments()
-        .filter_map(|a| a.get_long())
-        .map(|l| format!("--{l}"))
+    let mut names: Vec<String> = command
+        .get_subcommands()
+        .filter(|c| c.get_name() != "help")
+        .map(|c| c.get_name().to_string())
         .collect();
-    assert!(flags.contains(&"--list-tools".to_string()), "{flags:?}");
+    names.extend(
+        command
+            .get_subcommands()
+            .flat_map(|c| c.get_arguments())
+            .filter_map(|a| a.get_long())
+            .map(|l| l.to_string()),
+    );
+    assert!(names.contains(&"tools".to_string()), "{names:?}");
+    assert!(names.contains(&"format".to_string()), "{names:?}");
 
     for shell in Shell::value_variants() {
         let script = Cli::completion_script(*shell);
-        for flag in &flags {
-            // fish and PowerShell spell long flags without the dashes in
-            // places; the bare name is the stable part.
-            let bare = flag.trim_start_matches("--");
+        for name in &names {
             assert!(
-                script.contains(bare),
-                "{shell}: {flag} is missing from the completion script"
+                script.contains(name.as_str()),
+                "{shell}: `{name}` is missing from the completion script"
             );
         }
     }

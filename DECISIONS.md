@@ -1072,35 +1072,48 @@ a token for every upload.
 The command line is clap, and that reverses an earlier decision. The first
 versions matched three strings by hand, on the argument that a parser is a
 heavy dependency for flags that take no values — the same reasoning that
-removed `EnvFilter` for ~130 KB (D41). What changed is what the flags do:
-once `--list-tools` grew an output format and `--completions` a shell
-argument, the hand-rolled version had to validate values, reject flags in
-the wrong combination, and keep three completion scripts and a help string
-in step with `main` by hand, with a test standing guard because nothing else
-would. Clap does all of that from one declaration: `--help` in a long and a
-short form, a suggestion for a misspelled flag, `[possible values: …]` in
-every error, `--format` refused without `--list-tools`, and completions for
-five shells generated from the same declarations as the help, so they cannot
-disagree. Measured cost on the `http` release build: 4 301 328 → 4 484 592
-bytes, +183 KB (+4.3%) — `clap_builder` 80 KB, `clap_complete` 24 KB, the
-rest generic instances and `anstyle`/`strsim`. That is the size of the thing
-D12 protects against, taken knowingly, for a surface people meet at the
-terminal before they have configured anything. It is still parsed before
-`Config::from_env`, so every flag works on an unconfigured machine.
+removed `EnvFilter` for ~130 KB (D41). What changed is what the surface
+does: once the tool listing grew an output format and completions a shell
+argument, the hand-rolled version had to validate values, reject wrong
+combinations, and keep three completion scripts and a help string in step
+with `main` by hand, with a test standing guard because nothing else would.
+Clap does all of that from one declaration: `--help` in a long and a short
+form, a suggestion for a misspelled command, `[possible values: …]` in every
+error, and completions for five shells generated from the same declarations
+as the help, so they cannot disagree. Measured cost on the `http` release
+build: 4 301 328 → 4 484 592 bytes, +183 KB (+4.3%) — `clap_builder` 80 KB,
+`clap_complete` 24 KB, the rest generic instances and `anstyle`/`strsim`.
+That is the size of the thing D12 protects against, taken knowingly, for a
+surface people meet at the terminal before they have configured anything.
+Everything is still parsed before `Config::from_env`, so every command but
+`serve` works on an unconfigured machine.
+
+Actions are subcommands — `tools`, `completions`, `serve` — not flags. The
+first clap version had `--list-tools` and `--completions <shell>`, and the
+declaration showed why that was wrong: `--format` was a top-level option
+meaningful only with `--list-tools`, held in place by `requires`, and the two
+actions had to be declared mutually exclusive by hand. A flag modifies a run;
+an action replaces it. As subcommands, `--format` belongs to `tools` and the
+exclusivity is structural, and `tools show <name>` has somewhere to go if it
+is ever wanted. No command means `serve`, because that is what an MCP
+client's configuration runs — the bare binary — and that must keep working;
+`serve` exists so the default has a name in `--help`. The switch was a
+breaking change one release after the flags shipped, which is the cheapest
+moment there will ever be.
 
 What clap does not do here is read configuration. Its `env` support would
 put `READ_ONLY` and the rest on flags with a second, partial copy of the
 reference next to them; the environment stays the one source (D8), the
-variables are listed in `--help`'s footer instead, and the flags cover only
-what happens before a configuration exists.
+variables are listed in `--help`'s footer instead, and the command line
+names only what to do.
 
-`--completions <shell>` is what Homebrew installs through
+`completions <shell>` is what Homebrew installs through
 `generate_completions_from_executable`, so nothing in the tap or the release
 has to be kept in step. (The formula must `chmod 0755` the binary first: one
 downloaded from a release is not executable the way a compiled one is, and
 brew runs it to get the scripts.)
 
-`--list-tools` exists because deciding whether to install this should not
+`tools` exists because deciding whether to install this should not
 require producing an API token first. It reads the catalogue from the
 routers' own metadata, which exists before any client does, and prints every
 tool the build has — not what a given configuration would register. That is

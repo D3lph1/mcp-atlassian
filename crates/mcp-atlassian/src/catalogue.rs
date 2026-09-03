@@ -1,4 +1,4 @@
-//! `--list-tools`: the tool surface, printed without configuring anything.
+//! `tools`: the tool surface, printed without configuring anything.
 //!
 //! The point is that it works on an unconfigured machine — someone deciding
 //! whether to install this should not have to produce an API token first. So

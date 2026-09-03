@@ -1,6 +1,6 @@
 use anyhow::Context;
 use clap::Parser;
-use mcp_atlassian::cli::{Cli, Format};
+use mcp_atlassian::cli::{Cli, Command, Format};
 use mcp_atlassian::server::AtlassianServer;
 use mcp_atlassian_client::{Config, Transport};
 use rmcp::{transport::stdio, ServiceExt};
@@ -8,19 +8,22 @@ use tracing_subscriber::{filter::Targets, prelude::*};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
-    // Parsed before the configuration is read, so --help, --version,
-    // --list-tools and --completions work on a machine with no token.
-    let cli = Cli::parse();
-    if let Some(shell) = cli.completions {
-        print!("{}", Cli::completion_script(shell));
-        return Ok(());
-    }
-    if cli.list_tools {
-        match cli.format {
-            Format::Text => print!("{}", mcp_atlassian::catalogue::render()),
-            Format::Json => println!("{}", mcp_atlassian::catalogue::render_json()),
+    // Parsed before the configuration is read, so every command except
+    // `serve` — and --help, --version — works on a machine with no token.
+    match Cli::parse().command {
+        Some(Command::Completions { shell }) => {
+            print!("{}", Cli::completion_script(shell));
+            return Ok(());
         }
-        return Ok(());
+        Some(Command::Tools { format }) => {
+            match format {
+                Format::Text => print!("{}", mcp_atlassian::catalogue::render()),
+                Format::Json => println!("{}", mcp_atlassian::catalogue::render_json()),
+            }
+            return Ok(());
+        }
+        // No command is `serve`: that is what an MCP client's config runs.
+        None | Some(Command::Serve) => {}
     }
 
     let config = Config::from_env().context("failed to load configuration")?;
