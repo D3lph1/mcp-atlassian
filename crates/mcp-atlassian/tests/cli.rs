@@ -258,3 +258,21 @@ fn serve_help_names_the_variable_behind_each_flag() {
         );
     }
 }
+
+/// Configuration is validated in one place, and it names settings by their
+/// variable. Now that each has a flag, a failure has to point at them —
+/// otherwise someone who typed `serve` never learns the flags exist.
+#[test]
+fn a_configuration_failure_points_at_the_flags() {
+    let (ok, out) = run(&["serve"]);
+    assert!(!ok, "{out}");
+    assert!(out.contains("serve --help"), "no hint about flags:\n{out}");
+    assert!(out.contains("JIRA_URL"), "{out}");
+
+    // A partly configured service says what is missing, not just that
+    // something is.
+    let (ok, out) = run(&["serve", "--jira-url", "https://x.atlassian.net"]);
+    assert!(!ok, "{out}");
+    assert!(out.contains("JIRA_PERSONAL_TOKEN"), "{out}");
+    assert!(out.contains("serve --help"), "{out}");
+}

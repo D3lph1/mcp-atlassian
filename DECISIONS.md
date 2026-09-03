@@ -63,6 +63,17 @@ was not touched at all. Using clap's own `env = "..."` support would have
 moved parsing into clap and quietly narrowed it: `READ_ONLY=yes` works
 because `is_truthy` accepts it, and clap would not.
 
+clap does not decide what a valid configuration is, and that is deliberate.
+An `ArgGroup` requiring one of `--jira-url`, `--confluence-url` or the OAuth
+arguments would reject the bare `serve` that an MCP client's config runs with
+everything in `env`, because clap is not reading the environment here. Giving
+it `env` for those three would fix that and cost more: `Config::read` would
+keep validating the rest — that a URL has credentials, that OAuth has all
+four, that a token is not given both inline and as a file — so two places
+would answer "is this configured", and they would drift. Instead the failure
+carries a hint naming `serve --help`, since the messages report settings by
+their variable and the flag for each is one line away.
+
 No secret is a flag. Arguments are visible to every process on the machine
 through `ps` and are kept in shell history, so `JIRA_API_TOKEN` and the rest
 come from the environment or from a file — and the *path* is a flag,
