@@ -194,6 +194,11 @@ and Cursor read too. Other clients spell the same thing differently:
 }
 ```
 
+Zed does not start a server it read from `settings.json` until the entry is
+toggled, so on the first launch the tools are missing — open Settings → AI → MCP
+Servers and switch `atlassian` off and on again
+([zed#60800](https://github.com/zed-industries/zed/issues/60800)).
+
 </details>
 
 <details>
@@ -235,6 +240,29 @@ that mode. OAuth 2.0 for Cloud works through
 `ATLASSIAN_OAUTH_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN,CLOUD_ID}` and
 configures both products at once. Confluence takes the same variables with a
 `CONFLUENCE_` prefix.
+
+A Server/Data Center setup therefore carries no username — the token identifies
+the user by itself:
+
+```json
+{
+  "mcpServers": {
+    "atlassian": {
+      "command": "/path/to/mcp-atlassian",
+      "env": {
+        "JIRA_URL": "https://jira.your-company.com",
+        "JIRA_PERSONAL_TOKEN": "…",
+        "CONFLUENCE_URL": "https://confluence.your-company.com",
+        "CONFLUENCE_PERSONAL_TOKEN": "…"
+      }
+    }
+  }
+}
+```
+
+Add `JIRA_DEPLOYMENT=server` (and its `CONFLUENCE_` twin) only if your instance
+runs Data Center behind Basic auth, where the personal token is absent and the
+auth mode alone would point at Cloud.
 
 **Secrets from files.** Any token variable also accepts a `_FILE` spelling
 that reads the value from a path: `JIRA_API_TOKEN_FILE=/run/secrets/jira`.
