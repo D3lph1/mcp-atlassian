@@ -309,7 +309,9 @@ impl ConfluenceClient {
         page_id: &str,
         limit: u32,
     ) -> Result<ResultsPage<VersionInfo>> {
-        let path = format!("/rest/api/content/{page_id}/version");
+        // Server/DC never promoted the version list out of `experimental`.
+        let api = if self.cloud { "api" } else { "experimental" };
+        let path = format!("/rest/{api}/content/{page_id}/version");
         let limit = limit.to_string();
         self.client.get(&path, &[("limit", &limit)]).await
     }

@@ -135,7 +135,11 @@ impl FileAccess {
         let parent =
             std::fs::canonicalize(parent.unwrap_or(std::path::Path::new("."))).map_err(|e| {
                 McpError::invalid_params(
-                    format!("the directory of save_path `{save_path}` is not usable: {e}"),
+                    format!(
+                        "the directory of save_path `{save_path}` is not usable: {e}; \
+                         the path is resolved on the machine the server runs on (inside \
+                         its container, if any), so the directory must exist there"
+                    ),
                     None,
                 )
             })?;

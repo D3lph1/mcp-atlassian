@@ -115,6 +115,29 @@ async fn page_versions_and_historical_body() {
 }
 
 #[tokio::test]
+async fn server_page_versions_use_experimental_endpoint() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/rest/experimental/content/123/version"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "results": [{ "number": 30 }],
+            "size": 1
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let confluence = ConfluenceClient::new(&ServiceConfig {
+        base_url: server.uri(),
+        auth: Auth::Pat { token: "t".into() },
+        deployment: None,
+    })
+    .unwrap();
+    let versions = confluence.get_page_versions("123", 25).await.unwrap();
+    assert_eq!(versions.results[0].number, 30);
+}
+
+#[tokio::test]
 async fn move_page_preserves_title_and_bumps_version() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
