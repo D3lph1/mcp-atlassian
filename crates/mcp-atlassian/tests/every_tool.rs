@@ -62,11 +62,16 @@ async fn connect() -> (MockServer, RunningService<RoleClient, ()>) {
 }
 
 /// A real file, so the upload tools get past reading it and actually issue
-/// their request.
+/// their request. Written once per process: the tests run in parallel, and
+/// rewriting the file truncates it under an upload already streaming it.
 fn upload_source() -> String {
-    let path = std::env::temp_dir().join(format!("mcp-every-tool-{}.txt", std::process::id()));
-    std::fs::write(&path, b"payload").unwrap();
-    path.to_string_lossy().into_owned()
+    static PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    PATH.get_or_init(|| {
+        let path = std::env::temp_dir().join(format!("mcp-every-tool-{}.txt", std::process::id()));
+        std::fs::write(&path, b"payload").unwrap();
+        path.to_string_lossy().into_owned()
+    })
+    .clone()
 }
 
 /// Builds arguments that satisfy a tool's input schema.
